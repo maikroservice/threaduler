@@ -61,11 +61,25 @@ async def show_scheduled_tweet(page_id):
         "Notion-Version": f"{NOTION_VERSION}",
         
         })
-        block_list = r.json()["results"]
+        blocks = r.json()["results"]
+        tweet = {}
+        
+        tweet["content"] = ''
+        tweet["media"] = {}
+        
 
-        return [item["type"] for item in block_list]
+        
+        paragraph_blocks = [block["paragraph"]["rich_text"] for block in blocks if block["type"]=="paragraph"]
+        for block in paragraph_blocks:
+            if block:
+                tweet["content"] += f"{block[0]['plain_text'].rstrip()}\n"
+            else:
+                tweet["content"] += "\n\n"
 
-@app.get("/add")
+        return tweet
+
+@app.get("/update")
+# write data to notion?/database / sync current likes/retweets etc 
 async def root():
     url = f'https://api.notion.com/v1/pages/'
     r = requests.post(url, headers={
