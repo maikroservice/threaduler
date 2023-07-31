@@ -23,11 +23,11 @@ async def root():
         "Notion-Version": "2022-06-28"
         })
     result_dict = r.json()
-    return result_dict
-    #return [item["properties"] for item in result_dict["results"]]
+    #return result_dict
+    return [item["properties"] for item in result_dict["results"]]
     
 @app.get("/schedule")
-async def root():
+async def schedule():
     url = f'https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query'
     r = requests.post(url, headers={
         "Authorization": f"Bearer {NOTION_TOKEN}",
@@ -39,18 +39,31 @@ async def root():
         {
             "url": item["url"],
             "page_id": item["id"],
-            "tweet": item["properties"]["tweet"]["title"][0]["text"]["content"], 
+            "tweet": item["properties"]["Title"]["title"][0]["text"]["content"], 
             "publish_time": item["properties"]["publish_time"]["date"]["start"], 
             "time_zone": item["properties"]["publish_time"]["date"]["time_zone"],
-            "status": item["properties"]["status"]["select"]["name"]}
+            "status": item["properties"]["Status"]["status"]["name"]}
         for item in result_dict["results"]
-        if item["properties"]["publish_time"]["date"]["start"] is not None ]
+            if item["properties"]["publish_time"]["date"] is not None]
     
     only_non_published = [item for item in only_scheduled_tweets if item["status"] != "Published"]
     only_future_tweets = [tweet for tweet in only_scheduled_tweets if datetime.fromisoformat(tweet["publish_time"]).date() >= datetime.today().date()]
     
     # sort the results by the publish time (ascending)
     return sorted(only_future_tweets, key=lambda x: x['publish_time'])
+
+
+@app.get("/tweets/{page_id}")
+async def show_scheduled_tweet(page_id):
+        url = f'https://api.notion.com/v1/blocks/{page_id}/children'
+        r = requests.get(url, headers={
+        "Authorization": f"Bearer {NOTION_TOKEN}",
+        "Notion-Version": f"{NOTION_VERSION}",
+        
+        })
+        block_list = r.json()["results"]
+
+        return [item["type"] for item in block_list]
 
 @app.get("/add")
 async def root():
