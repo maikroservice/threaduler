@@ -1,0 +1,7 @@
+__pycache__/
+.env*
+couch/
+minio/
+search/
+.DS_Store
+poetry.lock

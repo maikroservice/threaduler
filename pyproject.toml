@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "threaduler"
+version = "0.1.0"
+description = ""
+authors = ["maikroservice <20245897+maikroservice@users.noreply.github.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+fastapi = "^0.86.0"
+requests = "^2.28.1"
+uvicorn = {extras = ["standard"], version = "^0.19.0"}
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
