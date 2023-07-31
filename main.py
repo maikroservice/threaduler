@@ -7,6 +7,7 @@ import tweepy
 import tempfile
 from dotenv.main import load_dotenv
 import os
+import uuid 
 
 load_dotenv()
 
@@ -65,7 +66,7 @@ async def transform_notion_to_tweet(page_id):
         
         })
         blocks = r.json()["results"]
-        print(blocks)
+        
         tweet = {}
         
         tweet["tweet"] = ''
@@ -101,10 +102,35 @@ async def publish_tweet(page_id):
     consumer_key=CONSUMER_KEY, consumer_secret=CONSUMER_SECRET,
     access_token=ACCESS_TOKEN, access_token_secret=ACCESS_TOKEN_SECRET
     )
+    auth = tweepy.OAuth1UserHandler(CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
+    api = tweepy.API(auth)
 
-    #media = [await client.upload_media(image["fileUrl"]).media_key for image in content["media"] if image]
-    response = client.create_tweet(text=content["tweet"])
+    media = []
+    for image in content["media"]:
+        if image:
+
+            fname = f"{str(uuid.uuid4())}.png"
+            with open(fname, "wb+") as fp:
+                import shutil
+                response = requests.get(image["fileUrl"], stream=True)
+                
+                shutil.copyfileobj(response.raw, fp)
+                del response
+                print(fp)
+                
+                print(fname)
+                img = api.simple_upload(filename=fname)
+                media.append(img)
+
+
+    if not media:
+        response = client.create_tweet(text=content["tweet"])
+    else:
+        print(media)
+        response = client.create_tweet(text=content["tweet"], media_ids=[medium.media_id for medium in media])
     print(f"https://twitter.com/user/status/{response.data['id']}")
+
+
 
 @app.get("/update")
 # write data to notion?/database / sync current likes/retweets etc 
