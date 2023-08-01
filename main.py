@@ -132,32 +132,35 @@ async def transform_notion_to_tweets(page_id):
             
             tweets.append(tweet)
 
-                
-
         return tweets
 
 
 @app.get("/publish/{page_id}")
 async def publish_tweets(page_id):
-    tweets = await transform_notion_to_tweets(page_id)
-
+    # setup twitter auth
     CONSUMER_KEY = os.environ["TWITTER_CONSUMER_KEY"]
     CONSUMER_SECRET = os.environ["TWITTER_CONSUMER_SECRET"]
     ACCESS_TOKEN = os.environ["TWITTER_ACCESS_TOKEN"]
     ACCESS_TOKEN_SECRET = os.environ["TWITTER_TOKEN_SECRET"]
 
+    # the client posts our tweets
     client = tweepy.Client(
     consumer_key=CONSUMER_KEY, consumer_secret=CONSUMER_SECRET,
     access_token=ACCESS_TOKEN, access_token_secret=ACCESS_TOKEN_SECRET
     )
+
+    # we need the api connection to upload images
     auth = tweepy.OAuth1UserHandler(CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
     api = tweepy.API(auth)
 
+    tweets = await transform_notion_to_tweets(page_id)
+    thread = []
     
-    for tweet in tweets:
+    for i, item in enumerate(tweets):
+        
         media = []
         
-        for image in tweet["media"]:
+        for image in item["media"]:
             if image:
                 with tempfile.NamedTemporaryFile(mode='wb', delete=False) as temp_file:
                 
@@ -172,12 +175,38 @@ async def publish_tweets(page_id):
                     img = api.simple_upload(filename=temp_file_path)
                     media.append(img)
 
+        if len(tweets) <= 1:
+            if not media:
+                response = client.create_tweet(text=item["tweet"])
+                return f"https://twitter.com/user/status/{response.data['id']}"
+            else:
+                response = client.create_tweet(text=item["tweet"], media_ids=[medium.media_id for medium in media])
+                return f"https://twitter.com/user/status/{response.data['id']}"
+        
+        elif(i==0):
+            # this is the first tweet
+            if not media:
+                response = client.create_tweet(text=item["tweet"])
+                thread.append(response.data['id'])
+                continue
+            else:
+                response = client.create_tweet(text=item["tweet"], media_ids=[medium.media_id for medium in media])
+                thread.append(response.data['id'])
+                continue
+        
+        else:
+            # this is a thread and we need to reply to the previous tweet
+            if not media:
+                response = client.create_tweet(text=item["tweet"], in_reply_to_tweet_id=thread[-1])
+                thread.append(response.data['id'])
+                continue
+            else:
+                response = client.create_tweet(text=item["tweet"], in_reply_to_tweet_id=thread[-1], media_ids=[medium.media_id for medium in media])
+                thread.append(response.data['id'])
+                continue
 
-    if not media:
-        response = client.create_tweet(text=content["tweet"])
-    else:
-        response = client.create_tweet(text=content["tweet"], media_ids=[medium.media_id for medium in media])
-    f"https://twitter.com/user/status/{response.data['id']}"
+        
+    return [f"https://twitter.com/user/status/{tweet}" for tweet in thread]
 
 
 @app.get("/update")
