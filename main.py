@@ -209,52 +209,28 @@ async def publish_tweets(page_id):
     return [f"https://twitter.com/user/status/{tweet}" for tweet in thread]
 
 
-@app.get("/update")
+@app.get("/update/{page_id}")
 # write data to notion?/database / sync current likes/retweets etc 
-async def update_notion_db():
-    url = f'https://api.notion.com/v1/pages/'
-    r = requests.post(url, headers={
+# update URL property + Status Property after publishing
+async def update_notion_db(page_id, tweet_url):
+    url = f'https://api.notion.com/v1/pages/{page_id}'
+    r = requests.patch(url, headers={
         "Authorization": f"Bearer {NOTION_TOKEN}",
         "Notion-Version": f"{NOTION_VERSION}",
-        }, 
+        },
         json={
             "parent": {"database_id": NOTION_DATABASE_ID},
             "properties": {
-                "id": {
-                    "title": [{
-                        "text": {
-                            "content": str(uuid.uuid4())
-                        }
-                    }]
+                "Status": {
+                    "status": {
+                        "name": "Published"
+                    }
                 },
-        "scheduled_datetime": {
-            "date": {
-                "start": "2024-11-05T12:00:00Z"
-            }
-        },
-        
-        "status": {
-        "status": {
-            "name": "Done"
-        }
-        },
-        
-        "platform": {
-            "select": {
-                "name": "pinterest"
-            }
-        },
-    
-        "content-text": {
-            "rich_text": [{
-                "text": {
-                    "content": "Tuscan Kale"
+                "URL": {
+                    "url": tweet_url
                 }
-            }]
-        },
-    }
+            }
         }
+    )
 
-        ) 
     return r.json
-    
