@@ -51,7 +51,7 @@ async def schedule():
             if item["properties"]["publish_time"]["date"] is not None]
     
     only_non_published = [item for item in only_scheduled_tweets if item["status"] != "Published"]
-    only_future_tweets = [tweet for tweet in only_scheduled_tweets if datetime.fromisoformat(tweet["publish_time"]).date() >= datetime.today().date()]
+    only_future_tweets = [tweet for tweet in only_non_published if datetime.fromisoformat(tweet["publish_time"]).date() >= datetime.today().date()]
     
     # sort the results by the publish time (ascending)
     return sorted(only_future_tweets, key=lambda x: x['publish_time'])
@@ -109,17 +109,18 @@ async def publish_tweet(page_id):
     for image in content["media"]:
         if image:
 
-            fname = f"{str(uuid.uuid4())}.png"
-            with open(fname, "wb+") as fp:
+            
+            with tempfile.NamedTemporaryFile(mode='wb', delete=False) as temp_file:
+            
                 import shutil
                 response = requests.get(image["fileUrl"], stream=True)
-                
-                shutil.copyfileobj(response.raw, fp)
+                # Write data to the temporary file    
+                shutil.copyfileobj(response.raw, temp_file)
                 del response
-                print(fp)
                 
-                print(fname)
-                img = api.simple_upload(filename=fname)
+                # Get the path of the temporary file
+                temp_file_path = temp_file.name
+                img = api.simple_upload(filename=temp_file_path)
                 media.append(img)
 
 
@@ -139,7 +140,6 @@ async def update_notion_db():
     r = requests.post(url, headers={
         "Authorization": f"Bearer {NOTION_TOKEN}",
         "Notion-Version": f"{NOTION_VERSION}",
-        
         }, 
         json={
             "parent": {"database_id": NOTION_DATABASE_ID},
