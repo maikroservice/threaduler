@@ -7,6 +7,7 @@ import tempfile
 from dotenv.main import load_dotenv
 import os
 import uuid
+import sys
 
 load_dotenv()
 
@@ -20,6 +21,10 @@ app = fastapi.FastAPI()
 
 class TooLongException(Exception):
     "Raised when the tweet character count is >280"
+    pass
+
+class NotionAPIKeyInvalid(Exception):
+    "Notion API Key Invalid"
     pass
 
 @app.get("/")
@@ -69,7 +74,7 @@ async def transform_notion_to_tweets(page_id):
         "Notion-Version": f"{NOTION_VERSION}",
         
         })
-        return r.json()["results"]
+        return r.json()
 
 
 def notion_blocks_to_tweet_chunks(blocks):
@@ -85,23 +90,36 @@ def notion_blocks_to_tweet_chunks(blocks):
             except KeyError:
                 chunks[counter] = []
                 chunks[counter].append(block)
-
     return chunks
 
 
 @app.get("/tweets/{page_id}")
 async def transform_notion_to_tweets(page_id):
         url = f'https://api.notion.com/v1/blocks/{page_id}/children'
-        r = requests.get(url, headers={
+        headers={
         "Authorization": f"Bearer {NOTION_TOKEN}",
         "Notion-Version": f"{NOTION_VERSION}",
+        "User-Agent": "PostmanRuntime/7.32.3",
+        }
+        r = requests.get(url, headers=headers)
+        print(r.status_code)
         
-        })
-        blocks = r.json()["results"]
+        data = r.json()
+        blocks = data["results"]
+
+        
+        while data.get('has_more', False):
+            next_cursor = data['next_cursor']
+
+            response = requests.get(f"{url}?start_cursor={next_cursor}", headers=headers)
+            data = response.json()
+            blocks += data["results"]
+        
         # we separate the blocks by divider and group them together in raw pretweet format
         chunks = notion_blocks_to_tweet_chunks(blocks)
 
         tweets = []
+        
         
         
         for i in range(0,len(chunks)):
