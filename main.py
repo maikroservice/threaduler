@@ -30,7 +30,7 @@ async def root():
         "Notion-Version": "2022-06-28"
         })
     result_dict = r.json()
-    return [item["properties"] for item in result_dict["results"]]
+    return [(item["id"], item["properties"]["Title"]["title"][0]["plain_text"]) for item in result_dict["results"] if item["properties"]["Status"]["status"]["name"] != "Published"] 
     
 
 @app.get("/schedule")
