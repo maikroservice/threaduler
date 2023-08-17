@@ -223,8 +223,13 @@ async def publish_tweets(page_id):
                 thread.append(response.data['id'])
                 continue
 
-        
-    return [f"https://twitter.com/user/status/{tweet}" for tweet in thread]
+    posted_tweets = [f"https://twitter.com/user/status/{tweet}" for tweet in thread]
+    if len(posted_tweets) >= 1:
+            # we have tweeted so we can update status and url
+            update_notion_db(page_id, posted_tweets[0])
+            return 0
+    else:
+        return 1
 
 
 @app.get("/update/{page_id}")
@@ -251,4 +256,4 @@ async def update_notion_db(page_id, tweet_url):
         }
     )
 
-    return r.json
+    return r.status_code
