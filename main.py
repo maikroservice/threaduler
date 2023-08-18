@@ -196,10 +196,16 @@ async def publish_tweets(page_id):
         if len(tweets) <= 1:
             if not media:
                 response = client.create_tweet(text=item["tweet"])
-                return f"https://twitter.com/user/status/{response.data['id']}"
+                tweet_url = f"https://twitter.com/user/status/{response.data['id']}"
+                update_notion_properties = update_notion_db(page_id, tweet_url)
+
+                return (tweet_url, update_notion_properties)
             else:
                 response = client.create_tweet(text=item["tweet"], media_ids=[medium.media_id for medium in media])
-                return f"https://twitter.com/user/status/{response.data['id']}"
+                tweet_url = f"https://twitter.com/user/status/{response.data['id']}"
+                update_notion_properties = update_notion_db(page_id, tweet_url)
+
+                return (tweet_url, update_notion_properties)
         
         elif(i==0):
             # this is the first tweet
@@ -224,7 +230,7 @@ async def publish_tweets(page_id):
                 continue
 
     posted_tweets = [f"https://twitter.com/user/status/{tweet}" for tweet in thread]
-    if len(posted_tweets) >= 1:
+    if len(posted_tweets) > 0:
             # we have tweeted so we can update status and url
             update_notion_db(page_id, posted_tweets[0])
             return 0
