@@ -213,7 +213,7 @@ async def publish_tweets(page_id):
             # there is only a single tweet
             if not media:
                 # if no media we can directly post it
-                response = client.create_tweet(text=item["tweet"])
+                response = client.create_tweet(text=item["tweet"], quote_tweet_id=item["quote"])
                 tweets.append(f"https://twitter.com/user/status/{response.data['id']}")
                 break
 
@@ -226,7 +226,7 @@ async def publish_tweets(page_id):
         elif(i==0):
             # this is the first tweet of many
             if not media:
-                response = client.create_tweet(text=item["tweet"])
+                response = client.create_tweet(text=item["tweet"], quote_tweet_id=item["quote"])
                 tweets.append(response.data['id'])
                 continue
             else:
@@ -237,11 +237,11 @@ async def publish_tweets(page_id):
         else:
             # this is a thread and we need to reply to the previous tweet
             if not media:
-                response = client.create_tweet(text=item["tweet"], in_reply_to_tweet_id=thread[-1])
+                response = client.create_tweet(text=item["tweet"], in_reply_to_tweet_id=tweets[-1], quote_tweet_id=item["quote"])
                 tweets.append(response.data['id'])
                 continue
             else:
-                response = client.create_tweet(text=item["tweet"], in_reply_to_tweet_id=thread[-1], media_ids=[medium.media_id for medium in media])
+                response = client.create_tweet(text=item["tweet"], in_reply_to_tweet_id=tweets[-1], media_ids=[medium.media_id for medium in media])
                 tweets.append(response.data['id'])
                 continue
 
