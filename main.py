@@ -23,6 +23,10 @@ class TooLongException(Exception):
     "Raised when the tweet character count is >280"
     pass
 
+class NoQuoteAndMediaException(Exception):
+    "Raised when the tweet is a quote but also contains media"
+    pass
+
 class NotionAPIKeyInvalid(Exception):
     "Notion API Key Invalid"
     pass
@@ -126,13 +130,17 @@ async def transform_notion_to_tweets(page_id):
             tweet = {}
             tweet["tweet"] = r""
             tweet["media"] = []
+            tweet["quote"] = ""
             # TODO: parse bullet list blocks / numbered list blocks correctly
             
             # find paragraph blocks and publish
             paragraph_blocks = [block["paragraph"]["rich_text"] for block in chunks[i] if block["type"] == "paragraph"]
             for block in paragraph_blocks:
                 if block:
-                    tweet["tweet"] += f"{block[0]['plain_text'].rstrip()}\n"
+                    if block[0]['plain_text'].strip().startswith("{{"):
+                        tweet["quote"] = block[1]['plain_text'].split("/")[-1]
+                    else:
+                        tweet["tweet"] += f"{block[0]['plain_text'].rstrip()}\n"
                 else:
                     tweet["tweet"] += "\n\n"
             
@@ -147,7 +155,15 @@ async def transform_notion_to_tweets(page_id):
                     raise TooLongException() 
             except TooLongException:
                 print(f'TOO LONG: {tweet["tweet"]}')
+                sys.exit(1)
             
+            try:
+                if tweet["media"] and tweet["quote"]:
+                # since media and quote tweets are mutually exclusive we need to stop here
+                    raise NoQuoteAndMediaException()
+            except NoQuoteAndMediaException:
+                print(f"Quote Tweets cannot contain media - {tweet['tweet']}")
+
             tweets.append(tweet)
 
         return tweets
@@ -174,10 +190,10 @@ async def publish_tweets(page_id):
     raw_tweets = await transform_notion_to_tweets(page_id)
     tweets = []
     
+    # loop through all the tweets and add corresponding images/video to it
     for i, item in enumerate(raw_tweets):
         
         media = []
-        
         for image in item["media"]:
             if image:
                 with tempfile.NamedTemporaryFile(mode='wb', delete=False) as temp_file:
@@ -196,6 +212,7 @@ async def publish_tweets(page_id):
         if len(tweets) <= 1:
             # there is only a single tweet
             if not media:
+                # if no media we can directly post it
                 response = client.create_tweet(text=item["tweet"])
                 tweets.append(f"https://twitter.com/user/status/{response.data['id']}")
                 break
