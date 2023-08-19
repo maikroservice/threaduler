@@ -171,10 +171,10 @@ async def publish_tweets(page_id):
     auth = tweepy.OAuth1UserHandler(CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
     api = tweepy.API(auth)
 
-    tweets = await transform_notion_to_tweets(page_id)
-    thread = []
+    raw_tweets = await transform_notion_to_tweets(page_id)
+    tweets = []
     
-    for i, item in enumerate(tweets):
+    for i, item in enumerate(raw_tweets):
         
         media = []
         
@@ -194,44 +194,43 @@ async def publish_tweets(page_id):
                     media.append(img)
 
         if len(tweets) <= 1:
+            # there is only a single tweet
             if not media:
                 response = client.create_tweet(text=item["tweet"])
-                tweet_url = f"https://twitter.com/user/status/{response.data['id']}"
-                update_notion_properties = update_notion_db(page_id, tweet_url)
+                tweets.append(f"https://twitter.com/user/status/{response.data['id']}")
+                break
 
-                return (tweet_url, update_notion_properties)
+                
             else:
                 response = client.create_tweet(text=item["tweet"], media_ids=[medium.media_id for medium in media])
-                tweet_url = f"https://twitter.com/user/status/{response.data['id']}"
-                update_notion_properties = update_notion_db(page_id, tweet_url)
-
-                return (tweet_url, update_notion_properties)
+                tweets.append(f"https://twitter.com/user/status/{response.data['id']}")
+                break
         
         elif(i==0):
-            # this is the first tweet
+            # this is the first tweet of many
             if not media:
                 response = client.create_tweet(text=item["tweet"])
-                thread.append(response.data['id'])
+                tweets.append(response.data['id'])
                 continue
             else:
                 response = client.create_tweet(text=item["tweet"], media_ids=[medium.media_id for medium in media])
-                thread.append(response.data['id'])
+                tweets.append(response.data['id'])
                 continue
         
         else:
             # this is a thread and we need to reply to the previous tweet
             if not media:
                 response = client.create_tweet(text=item["tweet"], in_reply_to_tweet_id=thread[-1])
-                thread.append(response.data['id'])
+                tweets.append(response.data['id'])
                 continue
             else:
                 response = client.create_tweet(text=item["tweet"], in_reply_to_tweet_id=thread[-1], media_ids=[medium.media_id for medium in media])
-                thread.append(response.data['id'])
+                tweets.append(response.data['id'])
                 continue
 
-    posted_tweets = [f"https://twitter.com/user/status/{tweet}" for tweet in thread]
+    posted_tweets = [f"https://twitter.com/user/status/{tweet_id}" for tweet_id in tweets]
     tweet_url = posted_tweets[0]
-    update_notion_properties = update_notion_db(page_id, tweet_url)
+    update_notion_properties = await update_notion_db(page_id, tweet_url)
 
     return (tweet_url, update_notion_properties)
 
