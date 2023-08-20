@@ -214,13 +214,13 @@ async def publish_tweets(page_id):
             if not media:
                 # if no media we can directly post it
                 response = client.create_tweet(text=item["tweet"], quote_tweet_id=item["quote"])
-                tweets.append(f"https://twitter.com/user/status/{response.data['id']}")
+                tweets.append(response.data['id'])
                 break
 
                 
             else:
                 response = client.create_tweet(text=item["tweet"], media_ids=[medium.media_id for medium in media])
-                tweets.append(f"https://twitter.com/user/status/{response.data['id']}")
+                tweets.append(response.data['id'])
                 break
         
         elif(i==0):
