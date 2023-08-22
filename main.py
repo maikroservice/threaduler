@@ -13,18 +13,21 @@ load_dotenv()
 
 
 NOTION_TOKEN=os.environ["NOTION_API_TOKEN"]
-
 NOTION_DATABASE_ID=os.environ["NOTION_DATABASE_ID"]
 NOTION_VERSION = "2022-06-28"
 
 app = fastapi.FastAPI()
 
-class TooLongException(Exception):
+class TweetTooLongException(Exception):
     "Raised when the tweet character count is >280"
     pass
 
-class NoQuoteAndMediaException(Exception):
+class TweetNoQuoteAndMediaException(Exception):
     "Raised when the tweet is a quote but also contains media"
+    pass
+
+class BskyPostTooLongException(Exception):
+    "Raised when the Bluesky Post character count is >300"
     pass
 
 class NotionAPIKeyInvalid(Exception):
@@ -152,7 +155,7 @@ async def transform_notion_to_tweets(page_id):
             try:
                 tweet["char_count"] = len(tweet["tweet"])
                 if tweet["char_count"] > 280:
-                    raise TooLongException() 
+                    raise TweetTooLongException() 
             except TooLongException:
                 print(f'TOO LONG: {tweet["tweet"]}')
                 sys.exit(1)
@@ -160,8 +163,8 @@ async def transform_notion_to_tweets(page_id):
             try:
                 if tweet["media"] and tweet["quote"]:
                 # since media and quote tweets are mutually exclusive we need to stop here
-                    raise NoQuoteAndMediaException()
-            except NoQuoteAndMediaException:
+                    raise TweetNoQuoteAndMediaException()
+            except TweetNoQuoteAndMediaException:
                 print(f"Quote Tweets cannot contain media - {tweet['tweet']}")
 
             tweets.append(tweet)
@@ -169,7 +172,7 @@ async def transform_notion_to_tweets(page_id):
         return tweets
 
 
-@app.get("/publish/{page_id}")
+@app.get("/publish_tweet/{page_id}")
 async def publish_tweets(page_id):
     # setup twitter auth
     CONSUMER_KEY = os.environ["TWITTER_CONSUMER_KEY"]
@@ -252,7 +255,7 @@ async def publish_tweets(page_id):
     return (tweet_url, update_notion_properties)
 
 
-@app.get("/update/{page_id}")
+@app.get("/update_tweet/{page_id}")
 # write data to notion?/database / sync current likes/retweets etc 
 # update URL property + Status Property after publishing
 async def update_notion_db(page_id, tweet_url):
@@ -277,3 +280,88 @@ async def update_notion_db(page_id, tweet_url):
     )
 
     return int(r.status_code != 200)
+
+@app.get("/publish_bksy/{page_id}")
+async def publish_bsky(page_id):
+    # setup twitter auth
+    BSKY_USERNAME = os.environ["BSKY_UNAME"]
+    BSKY_PASS = os.environ["BSKY_P"]
+    BSKY_SESSION_URL = 'https://bsky.social/xrpc/com.atproto.server.createSession'
+    r = requests.post(BSKY_SESSION_URL, json={"identifier": BSKY_USERNAME, "password": BSKY_PASS})
+    r.raise_for_status()
+    session = r.json
+
+    
+    # the client sends our posts
+    client = tweepy.Client(
+    consumer_key=CONSUMER_KEY, consumer_secret=CONSUMER_SECRET,
+    access_token=ACCESS_TOKEN, access_token_secret=ACCESS_TOKEN_SECRET
+    )
+
+    # we need the api connection to upload images
+    auth = tweepy.OAuth1UserHandler(CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
+    api = tweepy.API(auth)
+
+    raw_tweets = await transform_notion_to_tweets(page_id)
+    tweets = []
+    
+    # loop through all the tweets and add corresponding images/video to it
+    for i, item in enumerate(raw_tweets):
+        
+        media = []
+        for image in item["media"]:
+            if image:
+                with tempfile.NamedTemporaryFile(mode='wb', delete=False) as temp_file:
+                
+                    import shutil
+                    response = requests.get(image["fileUrl"], stream=True)
+                    # Write data to the temporary file    
+                    shutil.copyfileobj(response.raw, temp_file)
+                    del response
+                    
+                    # Get the path of the temporary file
+                    temp_file_path = temp_file.name
+                    img = api.simple_upload(filename=temp_file_path)
+                    media.append(img)
+
+        if len(tweets) <= 1:
+            # there is only a single tweet
+            if not media:
+                # if no media we can directly post it
+                response = client.create_tweet(text=item["tweet"], quote_tweet_id=item["quote"])
+                tweets.append(response.data['id'])
+                break
+
+                
+            else:
+                response = client.create_tweet(text=item["tweet"], media_ids=[medium.media_id for medium in media])
+                tweets.append(response.data['id'])
+                break
+        
+        elif(i==0):
+            # this is the first tweet of many
+            if not media:
+                response = client.create_tweet(text=item["tweet"], quote_tweet_id=item["quote"])
+                tweets.append(response.data['id'])
+                continue
+            else:
+                response = client.create_tweet(text=item["tweet"], media_ids=[medium.media_id for medium in media])
+                tweets.append(response.data['id'])
+                continue
+        
+        else:
+            # this is a thread and we need to reply to the previous tweet
+            if not media:
+                response = client.create_tweet(text=item["tweet"], in_reply_to_tweet_id=tweets[-1], quote_tweet_id=item["quote"])
+                tweets.append(response.data['id'])
+                continue
+            else:
+                response = client.create_tweet(text=item["tweet"], in_reply_to_tweet_id=tweets[-1], media_ids=[medium.media_id for medium in media])
+                tweets.append(response.data['id'])
+                continue
+
+    posted_tweets = [f"https://twitter.com/user/status/{tweet_id}" for tweet_id in tweets]
+    tweet_url = posted_tweets[0]
+    update_notion_properties = await update_notion_db(page_id, tweet_url)
+
+    return (tweet_url, update_notion_properties)
