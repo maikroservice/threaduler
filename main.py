@@ -100,8 +100,8 @@ def notion_blocks_to_tweet_chunks(blocks):
     return chunks
 
 
-@app.get("/tweets/{page_id}")
-async def transform_notion_to_tweets(page_id):
+@app.get("/posts/{page_id}")
+async def transform_notion_to_posts(page_id):
         url = f'https://api.notion.com/v1/blocks/{page_id}/children'
         headers={
         "Authorization": f"Bearer {NOTION_TOKEN}",
@@ -190,7 +190,7 @@ async def publish_tweets(page_id):
     auth = tweepy.OAuth1UserHandler(CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
     api = tweepy.API(auth)
 
-    raw_tweets = await transform_notion_to_tweets(page_id)
+    raw_tweets = await transform_notion_to_posts(page_id)
     tweets = []
     
     # loop through all the tweets and add corresponding images/video to it
@@ -280,88 +280,3 @@ async def update_notion_db(page_id, tweet_url):
     )
 
     return int(r.status_code != 200)
-
-@app.get("/publish_bksy/{page_id}")
-async def publish_bsky(page_id):
-    # setup twitter auth
-    BSKY_USERNAME = os.environ["BSKY_UNAME"]
-    BSKY_PASS = os.environ["BSKY_P"]
-    BSKY_SESSION_URL = 'https://bsky.social/xrpc/com.atproto.server.createSession'
-    r = requests.post(BSKY_SESSION_URL, json={"identifier": BSKY_USERNAME, "password": BSKY_PASS})
-    r.raise_for_status()
-    session = r.json
-
-    
-    # the client sends our posts
-    client = tweepy.Client(
-    consumer_key=CONSUMER_KEY, consumer_secret=CONSUMER_SECRET,
-    access_token=ACCESS_TOKEN, access_token_secret=ACCESS_TOKEN_SECRET
-    )
-
-    # we need the api connection to upload images
-    auth = tweepy.OAuth1UserHandler(CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
-    api = tweepy.API(auth)
-
-    raw_tweets = await transform_notion_to_tweets(page_id)
-    tweets = []
-    
-    # loop through all the tweets and add corresponding images/video to it
-    for i, item in enumerate(raw_tweets):
-        
-        media = []
-        for image in item["media"]:
-            if image:
-                with tempfile.NamedTemporaryFile(mode='wb', delete=False) as temp_file:
-                
-                    import shutil
-                    response = requests.get(image["fileUrl"], stream=True)
-                    # Write data to the temporary file    
-                    shutil.copyfileobj(response.raw, temp_file)
-                    del response
-                    
-                    # Get the path of the temporary file
-                    temp_file_path = temp_file.name
-                    img = api.simple_upload(filename=temp_file_path)
-                    media.append(img)
-
-        if len(tweets) <= 1:
-            # there is only a single tweet
-            if not media:
-                # if no media we can directly post it
-                response = client.create_tweet(text=item["tweet"], quote_tweet_id=item["quote"])
-                tweets.append(response.data['id'])
-                break
-
-                
-            else:
-                response = client.create_tweet(text=item["tweet"], media_ids=[medium.media_id for medium in media])
-                tweets.append(response.data['id'])
-                break
-        
-        elif(i==0):
-            # this is the first tweet of many
-            if not media:
-                response = client.create_tweet(text=item["tweet"], quote_tweet_id=item["quote"])
-                tweets.append(response.data['id'])
-                continue
-            else:
-                response = client.create_tweet(text=item["tweet"], media_ids=[medium.media_id for medium in media])
-                tweets.append(response.data['id'])
-                continue
-        
-        else:
-            # this is a thread and we need to reply to the previous tweet
-            if not media:
-                response = client.create_tweet(text=item["tweet"], in_reply_to_tweet_id=tweets[-1], quote_tweet_id=item["quote"])
-                tweets.append(response.data['id'])
-                continue
-            else:
-                response = client.create_tweet(text=item["tweet"], in_reply_to_tweet_id=tweets[-1], media_ids=[medium.media_id for medium in media])
-                tweets.append(response.data['id'])
-                continue
-
-    posted_tweets = [f"https://twitter.com/user/status/{tweet_id}" for tweet_id in tweets]
-    tweet_url = posted_tweets[0]
-    update_notion_properties = await update_notion_db(page_id, tweet_url)
-
-    return (tweet_url, update_notion_properties)
