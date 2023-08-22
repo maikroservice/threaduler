@@ -117,9 +117,8 @@ This is an example of how to list things you need to use the software and how to
     ```
 6. Enter your API keys in `.env`
    ```sh
-  API_KEY=ENTER YOUR API KEY;
+   API_KEY=ENTER YOUR API KEY
    ```
-
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
