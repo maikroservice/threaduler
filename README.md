@@ -98,8 +98,19 @@ To get a local copy up and running follow these example steps.
 ### Prerequisites
 
 This is an example of how to list things you need to use the software and how to install them.
+<ol>
+<li>
+Install poetry - <a href="https://python-poetry.org/docs/#installation">https://python-poetry.org/docs/#installation</a> </li>
+<li>create notion integration - <a href="https://www.notion.so/my-integrations">https://www.notion.so/my-integrations</a>
+<br />
+<img src="images/new_integration.png" width="200" /><br />
+<img src="images/integration.png" width="400" /></li>
 
-* Install poetry * - [https://python-poetry.org/docs/#installation](https://python-poetry.org/docs/#installation)
+<li>1. duplicate the post database <a href="https://maikroservice.notion.site/e21319ac803442c8bec1426bbd6b7077?v=c677f1327c7742818d73231c026ca0ac&pvs=4">template</a> <br />
+<img src="images/duplicate_template.png" width="700" /></li></li>
+<li>add integration to your notion database page <br />
+<img src="images/connection_notion.png" width="700" /></li>
+</ol>
 
 ### Installation
 
@@ -131,6 +142,8 @@ Use this space to show useful examples of how a project can be used. Additional 
 
 _For more examples, please refer to the [Documentation](https://github.com/maikroservice/threaduler/wiki)_
 
+1. duplicate the post database [template](https://maikroservice.notion.site/e21319ac803442c8bec1426bbd6b7077?v=c677f1327c7742818d73231c026ca0ac&pvs=4)
+2. use the 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 
