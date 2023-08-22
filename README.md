@@ -227,6 +227,6 @@ Use this space to list resources you find helpful and would like to give credit 
 [issues-shield]: https://img.shields.io/github/issues/maikroservice/threaduler.svg?style=for-the-badge
 [issues-url]: https://github.com/maikroservice/threaduler/issues
 [license-shield]: https://img.shields.io/github/license/maikroservice/threaduler.svg?style=for-the-badge
-[license-url]: https://github.com/maikroservice/threaduler/blob/main/LICENSE.txt
+[license-url]: https://img.shields.io/badge/license-MIT-green
 [linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
 [linkedin-url]: https://linkedin.com/in/maikroservice
