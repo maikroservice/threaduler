@@ -143,7 +143,8 @@ Use this space to show useful examples of how a project can be used. Additional 
 _For more examples, please refer to the [Documentation](https://github.com/maikroservice/threaduler/wiki)_
 
 1. duplicate the post database [template](https://maikroservice.notion.site/e21319ac803442c8bec1426bbd6b7077?v=c677f1327c7742818d73231c026ca0ac&pvs=4)
-2. use the 
+2. use the template tweets to check out functionality such as threads, quote tweets and more.
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 
@@ -195,7 +196,7 @@ Distributed under the MIT License. See `LICENSE.txt` for more information.
 <!-- CONTACT -->
 ## Contact
 
-Your Name - [@maikroservice](https://twitter.com/maikroservice)
+Maik Ro - [@maikroservice](https://twitter.com/maikroservice)
 
 Project Link: [https://github.com/maikroservice/threaduler](https://github.com/maikroservice/threaduler)
 
