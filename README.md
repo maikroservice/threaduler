@@ -79,7 +79,7 @@
 ## About The Project
 
 Threaduler aims to solve a pain many content creators have - sharing their content while they sleep and ideally post similar content on multiple platforms. 
-The driver for threaduler is <a href="https://notion.so">notion</a>, it stores the content and the meta information necessary to publish the posts. 
+The driver for threaduler is <a href="https://affiliate.notion.so/9g9spozmmpsx">notion</a>, it stores the content and the meta information necessary to publish the posts. 
 The project is currently in alpha - it works.
 BUT during the development of a stable future version some hickups will (most likely) happen. 
 
@@ -212,6 +212,8 @@ Use this space to list resources you find helpful and would like to give credit 
 * [Choose an Open Source License](https://choosealicense.com)
 * [Img Shields](https://shields.io)
 * [bsky posts](https://github.com/bluesky-social/atproto-website/blob/main/examples/create_bsky_post.py)
+* Notion Affiliate Program <3
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 
