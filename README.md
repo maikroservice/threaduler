@@ -116,7 +116,7 @@ This is an example of how to list things you need to use the software and how to
     poetry install
     ```
 6. Enter your API keys in `.env`
-   ```bash
+   ```sh
   API_KEY=ENTER YOUR API KEY;
    ```
 
