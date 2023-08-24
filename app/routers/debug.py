@@ -1,12 +1,13 @@
 import requests
 import os 
 from fastapi import APIRouter
-from ..dependencies import get_notion_envs
+from ..vars import get_notion_envs
 
 router = APIRouter(
     prefix="/debug",
     tags=["debug"],
 )
+
 NOTION_TOKEN, NOTION_DATABASE_ID, NOTION_VERSION = get_notion_envs()
 
 @router.get("/schedule")
@@ -36,7 +37,7 @@ async def schedule():
     only_future_posts = [posts for post in only_non_published if datetime.fromisoformat(post["publish_time"]).date() >= datetime.today().date()]
     
     # sort the results by the publish time (ascending)
-    return sorted(only_future_tweets, key=lambda x: x['publish_time'])
+    return sorted(only_future_posts, key=lambda x: x['publish_time'])
 
 
 @router.get("/{page_id}")

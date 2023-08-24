@@ -4,12 +4,13 @@ import requests
 import os
 import json
 import sys
-from .routers import twitter, bsky
+from .routers import twitter, bsky, debug
 from .vars import get_notion_envs
 
 app = FastAPI()
 app.include_router(twitter.router)
 app.include_router(bsky.router)
+app.include_router(debug.router)
 
 @app.get("/")
 async def root():
