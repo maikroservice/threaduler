@@ -4,6 +4,10 @@ from fastapi import APIRouter, Depends
 from typing import Dict, List
 from ..vars import get_notion_envs, get_bsky_envs
 from ..dependencies import notion_blocks_to_post_chunks, PostTooLongException
+from .debug import update_notion_metadata
+from datetime import datetime, timezone
+import sys 
+import json
 
 NOTION_TOKEN, NOTION_DATABASE_ID, NOTION_VERSION = get_notion_envs()
 BSKY_USERNAME, BSKY_PASS = get_bsky_envs()
@@ -13,7 +17,7 @@ router = APIRouter(
     tags=["bsky"],
     responses={404: {"description": "Not found"}},
 )
-
+# bsky functions from: https://github.com/bluesky-social/atproto-website/blob/main/examples/create_bsky_post.py
 async def upload_file(access_token, filename, img_bytes, base_url="https://bsky.social") -> Dict:
     suffix = filename.split(".")[-1].lower()
     mimetype = "application/octet-stream"
@@ -40,6 +44,199 @@ async def upload_file(access_token, filename, img_bytes, base_url="https://bsky.
         "image":resp.json()["blob"]
     }
 
+
+def parse_mentions(text: str) -> List[Dict]:
+    spans = []
+    # regex based on: https://atproto.com/specs/handle#handle-identifier-syntax
+    mention_regex = rb"[$|\W](@([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)"
+    text_bytes = text.encode("UTF-8")
+    for m in re.finditer(mention_regex, text_bytes):
+        spans.append(
+            {
+                "start": m.start(1),
+                "end": m.end(1),
+                "handle": m.group(1)[1:].decode("UTF-8"),
+            }
+        )
+    return spans
+
+def parse_urls(text: str) -> List[Dict]:
+    spans = []
+    # partial/naive URL regex based on: https://stackoverflow.com/a/3809435
+    # tweaked to disallow some training punctuation
+    url_regex = rb"[$|\W](https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*[-a-zA-Z0-9@%_\+~#//=])?)"
+    text_bytes = text.encode("UTF-8")
+    for m in re.finditer(url_regex, text_bytes):
+        spans.append(
+            {
+                "start": m.start(1),
+                "end": m.end(1),
+                "url": m.group(1).decode("UTF-8"),
+            }
+        )
+    return spans
+
+async def parse_facets(text: str, base_url: str="https://bsky.social") -> List[Dict]:
+    """
+    parses post text and returns a list of app.bsky.richtext.facet objects for any mentions (@handle.example.com) or URLs (https://example.com)
+
+    indexing must work with UTF-8 encoded bytestring offsets, not regular unicode string offsets, to match Bluesky API expectations
+    """
+    facets = []
+    for m in parse_mentions(text):
+        resp = requests.get(
+            base_url + "/xrpc/com.atproto.identity.resolveHandle",
+            params={"handle": m["handle"]},
+        )
+        # if handle couldn't be resolved, just skip it! will be text in the post
+        if resp.status_code == 400:
+            continue
+        did = resp.json()["did"]
+        facets.append(
+            {
+                "index": {
+                    "byteStart": m["start"],
+                    "byteEnd": m["end"],
+                },
+                "features": [{"$type": "app.bsky.richtext.facet#mention", "did": did}],
+            }
+        )
+    for u in parse_urls(text):
+        facets.append(
+            {
+                "index": {
+                    "byteStart": u["start"],
+                    "byteEnd": u["end"],
+                },
+                "features": [
+                    {
+                        "$type": "app.bsky.richtext.facet#link",
+                        # NOTE: URI ("I") not URL ("L")
+                        "uri": u["url"],
+                    }
+                ],
+            }
+        )
+    return facets
+
+async def get_embed_ref(ref_uri: str, base_url: str="https://bsky.social") -> Dict:
+    uri_parts = parse_uri(ref_uri)
+    resp = requests.get(
+        base_url + "/xrpc/com.atproto.repo.getRecord",
+        params=uri_parts,
+    )
+    print(resp.json())
+    resp.raise_for_status()
+    record = resp.json()
+
+    return {
+        "$type": "app.bsky.embed.record",
+        "record": {
+            "uri": record["uri"],
+            "cid": record["cid"],
+        },
+    }
+
+async def get_reply_refs(parent_uri: str, base_url: str="https://bsky.social") -> Dict:
+    uri_parts = parse_uri(parent_uri)
+    resp = requests.get(
+        base_url + "/xrpc/com.atproto.repo.getRecord",
+        params=uri_parts,
+    )
+    resp.raise_for_status()
+    parent = resp.json()
+    root = parent
+    parent_reply = parent["value"].get("reply")
+    if parent_reply is not None:
+        root_uri = parent_reply["root"]["uri"]
+        root_repo, root_collection, root_rkey = root_uri.split("/")[2:5]
+        resp = requests.get(
+            base_url + "/xrpc/com.atproto.repo.getRecord",
+            params={
+                "repo": root_repo,
+                "collection": root_collection,
+                "rkey": root_rkey,
+            },
+        )
+        resp.raise_for_status()
+        root = resp.json()
+
+    return {
+        "root": {
+            "uri": root["uri"],
+            "cid": root["cid"],
+        },
+        "parent": {
+            "uri": parent["uri"],
+            "cid": parent["cid"],
+        },
+    }
+
+async def create_post(text: str, **args):
+    base_url = "https://bsky.social"
+
+    # trailing "Z" is preferred over "+00:00"
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    
+    # these are the required fields which every post must include
+    post = {
+        "$type": "app.bsky.feed.post",
+        "text": text,
+        "createdAt": now,
+    }
+
+    # indicate included languages (optional)
+    try:
+        if args["lang"]:
+            post["langs"] = args["lang"]
+    except KeyError:
+        pass
+    # parse out mentions and URLs as "facets"
+    """
+    if len(text) > 0:
+        facets = parse_facets(base_url, post["text"])
+        if facets:
+            post["facets"] = facets
+    """
+
+    # if this is a reply, get references to the parent and root
+    try:
+        if args["reply_to"]:
+            post["reply"] = get_reply_refs(base_url, args["reply_to"])
+
+        if args["image"]:
+            post["embed"] = upload_images(
+                base_url, session["accessJwt"], args["image"]#, alt_text
+            )
+        elif args["embed_url"]:
+            post["embed"] = fetch_embed_url_card(
+                base_url, session["accessJwt"], args["embed_url"]
+            )
+        elif args["embed_ref"]:
+            post["embed"] = get_embed_ref(base_url, args["embed_ref"])
+    except KeyError:
+        pass
+
+
+    print("creating post:", file=sys.stderr)
+    # print(json.dumps(post, indent=2), file=sys.stderr)
+    return post
+    """
+    resp = requests.post(
+        args.base_url + "/xrpc/com.atproto.repo.createRecord",
+        headers={"Authorization": "Bearer " + session["accessJwt"]},
+        json={
+            "repo": session["did"],
+            "collection": "app.bsky.feed.post",
+            "record": post,
+        },
+    )
+    print("createRecord response:", file=sys.stderr)
+    print(json.dumps(resp.json(), indent=2))
+    resp.raise_for_status()
+    """
+    
+
 @router.get("/publish/{page_id}")
 async def publish_bsky(page_id):
    
@@ -47,7 +244,7 @@ async def publish_bsky(page_id):
     r = requests.post(BSKY_SESSION_URL, json={"identifier": BSKY_USERNAME, "password": BSKY_PASS})
     r.raise_for_status()
     session = r.json()
-    access_token = session.accessJwt
+    access_token = session["accessJwt"]
 
     
     raw_posts = await transform_notion_to_posts(page_id)
@@ -55,7 +252,9 @@ async def publish_bsky(page_id):
     
     # loop through all the tweets and add corresponding images/video to it
     for i, item in enumerate(raw_posts):
-        
+        bsky_post = await create_post(item)
+        posts.append(bsky_post)
+        """
         media = []
         for image in item["media"]:
             if image:
@@ -82,7 +281,7 @@ async def publish_bsky(page_id):
                     
                     img = upload_file(access_token=access_token, filename=temp_file_path, img_bytes=temp_file)
                     media.append(img)
-
+        
         if len(tweets) <= 1:
             # there is only a single post
             if not media:
@@ -121,10 +320,12 @@ async def publish_bsky(page_id):
 
     posted_tweets = [f"https://twitter.com/user/status/{tweet_id}" for tweet_id in tweets]
     tweet_url = posted_tweets[0]
-    update_notion_properties = await update_notion_db(page_id, tweet_url)
+    """
+    
+    # update_notion_properties = await update_notion_db(page_id, bksy_url)
 
-    return (tweet_url, update_notion_properties)
-
+    #return (tweet_url, update_notion_properties)
+    return posts
 
 
 @router.get("/{page_id}")

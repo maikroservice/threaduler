@@ -6,7 +6,7 @@ authors = ["maikroservice <20245897+maikroservice@users.noreply.github.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = ">=3.8,<3.12"
 fastapi = "^0.86.0"
 requests = "^2.28.1"
 uvicorn = {extras = ["standard"], version = "^0.19.0"}
