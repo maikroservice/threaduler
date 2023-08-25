@@ -8,6 +8,7 @@ from .debug import update_notion_metadata
 from datetime import datetime, timezone
 import sys 
 import json
+import re
 
 NOTION_TOKEN, NOTION_DATABASE_ID, NOTION_VERSION = get_notion_envs()
 BSKY_USERNAME, BSKY_PASS = get_bsky_envs()
@@ -84,7 +85,7 @@ async def parse_facets(text: str, base_url: str="https://bsky.social") -> List[D
     """
     facets = []
     for m in parse_mentions(text):
-        resp = requests.get(
+        resp = await requests.get(
             base_url + "/xrpc/com.atproto.identity.resolveHandle",
             params={"handle": m["handle"]},
         )
@@ -192,12 +193,12 @@ async def create_post(text: str, **args):
     except KeyError:
         pass
     # parse out mentions and URLs as "facets"
-    """
+   
     if len(text) > 0:
-        facets = parse_facets(base_url, post["text"])
+        facets = await parse_facets(base_url, post["text"])
         if facets:
             post["facets"] = facets
-    """
+   
 
     # if this is a reply, get references to the parent and root
     try:
