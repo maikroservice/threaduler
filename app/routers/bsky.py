@@ -84,8 +84,10 @@ async def parse_facets(text: str, base_url: str="https://bsky.social") -> List[D
     indexing must work with UTF-8 encoded bytestring offsets, not regular unicode string offsets, to match Bluesky API expectations
     """
     facets = []
-    for m in parse_mentions(text):
-        resp = await requests.get(
+    mentions = parse_mentions(text)
+    
+    for m in mentions:
+        resp = requests.get(
             base_url + "/xrpc/com.atproto.identity.resolveHandle",
             params={"handle": m["handle"]},
         )
@@ -102,7 +104,9 @@ async def parse_facets(text: str, base_url: str="https://bsky.social") -> List[D
                 "features": [{"$type": "app.bsky.richtext.facet#mention", "did": did}],
             }
         )
-    for u in parse_urls(text):
+    urls = parse_urls(text)
+    for u in urls:
+        print("check")
         facets.append(
             {
                 "index": {
@@ -121,7 +125,7 @@ async def parse_facets(text: str, base_url: str="https://bsky.social") -> List[D
     return facets
 
 async def get_embed_ref(ref_uri: str, base_url: str="https://bsky.social") -> Dict:
-    uri_parts = parse_uri(ref_uri)
+    uri_parts = parse_urls(ref_uri)
     resp = requests.get(
         base_url + "/xrpc/com.atproto.repo.getRecord",
         params=uri_parts,
@@ -139,7 +143,7 @@ async def get_embed_ref(ref_uri: str, base_url: str="https://bsky.social") -> Di
     }
 
 async def get_reply_refs(parent_uri: str, base_url: str="https://bsky.social") -> Dict:
-    uri_parts = parse_uri(parent_uri)
+    uri_parts = parse_urls(parent_uri)
     resp = requests.get(
         base_url + "/xrpc/com.atproto.repo.getRecord",
         params=uri_parts,
@@ -173,7 +177,7 @@ async def get_reply_refs(parent_uri: str, base_url: str="https://bsky.social") -
         },
     }
 
-async def create_post(text: str, **args):
+async def create_post(post_content: Dict, **args):
     base_url = "https://bsky.social"
 
     # trailing "Z" is preferred over "+00:00"
@@ -182,7 +186,7 @@ async def create_post(text: str, **args):
     # these are the required fields which every post must include
     post = {
         "$type": "app.bsky.feed.post",
-        "text": text,
+        "text": post_content["post"],
         "createdAt": now,
     }
 
@@ -194,8 +198,8 @@ async def create_post(text: str, **args):
         pass
     # parse out mentions and URLs as "facets"
    
-    if len(text) > 0:
-        facets = await parse_facets(base_url, post["text"])
+    if len(post_content["post"]) > 0:
+        facets = await parse_facets(post["text"], base_url)
         if facets:
             post["facets"] = facets
    
@@ -246,9 +250,10 @@ async def publish_bsky(page_id):
     r.raise_for_status()
     session = r.json()
     access_token = session["accessJwt"]
-
+    print(access_token)
     
     raw_posts = await transform_notion_to_posts(page_id)
+    print(raw_posts)
     posts = []
     
     # loop through all the tweets and add corresponding images/video to it
