@@ -177,7 +177,7 @@ async def get_reply_refs(parent_uri: str, base_url: str="https://bsky.social") -
         },
     }
 
-async def create_post(post_content: Dict, **args):
+async def create_post(post_content: Dict, args: Dict):
     base_url = "https://bsky.social"
 
     # trailing "Z" is preferred over "+00:00"
@@ -211,11 +211,11 @@ async def create_post(post_content: Dict, **args):
 
         if args["image"]:
             post["embed"] = upload_images(
-                base_url, session["accessJwt"], args["image"]#, alt_text
+                base_url, args["session"]["accessJwt"], args["image"]#, alt_text
             )
         elif args["embed_url"]:
             post["embed"] = fetch_embed_url_card(
-                base_url, session["accessJwt"], args["embed_url"]
+                base_url, args["session"]["accessJwt"], args["embed_url"]
             )
         elif args["embed_ref"]:
             post["embed"] = get_embed_ref(base_url, args["embed_ref"])
@@ -223,15 +223,14 @@ async def create_post(post_content: Dict, **args):
         pass
 
 
-    print("creating post:", file=sys.stderr)
-    # print(json.dumps(post, indent=2), file=sys.stderr)
-    return post
-    """
+    #print("creating post:", file=sys.stderr)
+    #print(json.dumps(post, indent=2), file=sys.stderr)
+
     resp = requests.post(
-        args.base_url + "/xrpc/com.atproto.repo.createRecord",
-        headers={"Authorization": "Bearer " + session["accessJwt"]},
+        base_url + "/xrpc/com.atproto.repo.createRecord",
+        headers={"Authorization": "Bearer " + args["session"]["accessJwt"]},
         json={
-            "repo": session["did"],
+            "repo": args["session"]["did"],
             "collection": "app.bsky.feed.post",
             "record": post,
         },
@@ -239,7 +238,7 @@ async def create_post(post_content: Dict, **args):
     print("createRecord response:", file=sys.stderr)
     print(json.dumps(resp.json(), indent=2))
     resp.raise_for_status()
-    """
+    return resp.json()
     
 
 @router.get("/publish/{page_id}")
@@ -249,19 +248,16 @@ async def publish_bsky(page_id):
     r = requests.post(BSKY_SESSION_URL, json={"identifier": BSKY_USERNAME, "password": BSKY_PASS})
     r.raise_for_status()
     session = r.json()
-    access_token = session["accessJwt"]
-    print(access_token)
+    args = {"session": session}
     
     raw_posts = await transform_notion_to_posts(page_id)
-    print(raw_posts)
     posts = []
     
     # loop through all the tweets and add corresponding images/video to it
     for i, item in enumerate(raw_posts):
-        bsky_post = await create_post(item)
-        posts.append(bsky_post)
-        """
+        
         media = []
+        """
         for image in item["media"]:
             if image:
                 with tempfile.NamedTemporaryFile(mode='wb') as temp_file:
@@ -287,16 +283,16 @@ async def publish_bsky(page_id):
                     
                     img = upload_file(access_token=access_token, filename=temp_file_path, img_bytes=temp_file)
                     media.append(img)
-        
-        if len(tweets) <= 1:
+        """
+        if len(raw_posts) <= 1:
             # there is only a single post
             if not media:
                 # if no media we can directly post it
-                response = client.create_tweet(text=item["post"], quote_tweet_id=item["quote"])
-                tweets.append(response.data['id'])
+                response = await create_post(item, args=args)
+                posts.append(response["uri"].split("/")[-1])
                 break
 
-                
+        """    
             else:
                 response = client.create_tweet(text=item["post"], media_ids=[medium.media_id for medium in media])
                 tweets.append(response.data['id'])
@@ -323,15 +319,14 @@ async def publish_bsky(page_id):
                 response = client.create_tweet(text=item["post"], in_reply_to_tweet_id=tweets[-1], media_ids=[medium.media_id for medium in media])
                 tweets.append(response.data['id'])
                 continue
-
-    posted_tweets = [f"https://twitter.com/user/status/{tweet_id}" for tweet_id in tweets]
-    tweet_url = posted_tweets[0]
     """
+    posted_bsky_posts = [f"https://bsky.app/profile/{BSKY_USERNAME}/post/{post_id}" for post_id in posts]
+    bsky_url = posted_bsky_posts[0]
     
-    # update_notion_properties = await update_notion_db(page_id, bksy_url)
+    
+    update_notion_properties = await update_notion_metadata(page_id, "bsky", bsky_url)
 
-    #return (tweet_url, update_notion_properties)
-    return posts
+    return (bsky_url, update_notion_properties)
 
 
 @router.get("/{page_id}")

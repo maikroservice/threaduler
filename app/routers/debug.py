@@ -69,7 +69,7 @@ async def update_notion_metadata(page_id, platform, post_url):
                         "name": "Published"
                     }
                 },
-                f"{platform}_URL": {
+                f"{platform}_url": {
                     "url": post_url
                 }
             }
