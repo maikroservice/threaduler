@@ -132,7 +132,7 @@ def get_embed_ref(ref_uri: str) -> Dict:
         BSKY_BASEURL + "/xrpc/com.atproto.repo.getRecord",
         params=uri_parts,
     )
-    print(resp.json())
+    #print(resp.json())
     resp.raise_for_status()
     record = resp.json()
 
@@ -180,7 +180,7 @@ def get_reply_refs(parent_uri: str) -> Dict:
     }
 
 def create_post(post_content: Dict, args: Dict):
-    print(args["media"])
+    #print(args["media"])
 
     # trailing "Z" is preferred over "+00:00"
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -207,7 +207,7 @@ def create_post(post_content: Dict, args: Dict):
    
     if args["media"]:
         post["embed"] = args["media"]
-        print(post)
+        #print(post)
 
     # if this is a reply, get references to the parent and root
     try:
