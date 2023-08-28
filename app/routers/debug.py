@@ -41,7 +41,7 @@ async def schedule():
 
 
 @router.get("/{page_id}")
-async def transform_notion_to_raw_posts(page_id):
+def transform_notion_to_raw_posts(page_id):
     # this gives us the raw notion api response for potential debugging
     url = f'https://api.notion.com/v1/blocks/{page_id}/children'
     r = requests.get(url, headers={
@@ -55,7 +55,7 @@ async def transform_notion_to_raw_posts(page_id):
 @router.get("/update_notion/{page_id}")
 # write data to notion?/database / sync current likes/retweets etc 
 # update URL property + Status Property after publishing
-async def update_notion_metadata(page_id, platform, post_url):
+def update_notion_metadata(page_id, platform, post_url):
     url = f'https://api.notion.com/v1/pages/{page_id}'
     r = requests.patch(url, headers={
         "Authorization": f"Bearer {NOTION_TOKEN}",

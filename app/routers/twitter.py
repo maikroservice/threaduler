@@ -2,6 +2,7 @@ import os
 import sys
 import requests
 import tweepy
+import tempfile
 from fastapi import APIRouter 
 from ..vars import get_notion_envs, get_twitter_envs
 from ..dependencies import notion_blocks_to_post_chunks, PostTooLongException, TweetNoQuoteAndMediaException
@@ -118,44 +119,29 @@ async def publish_tweets(page_id):
                     
                     # Get the path of the temporary file
                     temp_file_path = temp_file.name
-                    img = api.simple_upload(filename=temp_file_path)
-                    media.append(img)
+                    media_file = api.simple_upload(filename=temp_file_path)
+                    media.append(media_file)
 
-        if len(tweets) <= 1:
-            # there is only a single tweet
+
+        if(i==0):
+            # this is the first tweet
             if not media:
-                # if no media we can directly post it
                 response = client.create_tweet(text=item["tweet"], quote_tweet_id=item["quote"])
-                tweets.append(response.data['id'])
-                break
-
                 
             else:
                 response = client.create_tweet(text=item["tweet"], media_ids=[medium.media_id for medium in media])
-                tweets.append(response.data['id'])
-                break
-        
-        elif(i==0):
-            # this is the first tweet of many
-            if not media:
-                response = client.create_tweet(text=item["tweet"], quote_tweet_id=item["quote"])
-                tweets.append(response.data['id'])
-                continue
-            else:
-                response = client.create_tweet(text=item["tweet"], media_ids=[medium.media_id for medium in media])
-                tweets.append(response.data['id'])
-                continue
+                
         
         else:
             # this is a thread and we need to reply to the previous tweet
             if not media:
                 response = client.create_tweet(text=item["tweet"], in_reply_to_tweet_id=tweets[-1], quote_tweet_id=item["quote"])
-                tweets.append(response.data['id'])
-                continue
+                
             else:
                 response = client.create_tweet(text=item["tweet"], in_reply_to_tweet_id=tweets[-1], media_ids=[medium.media_id for medium in media])
-                tweets.append(response.data['id'])
-                continue
+        
+        tweets.append(response.data['id'])
+
 
     posted_tweets = [f"https://twitter.com/user/status/{tweet_id}" for tweet_id in tweets]
     tweet_url = posted_tweets[0]

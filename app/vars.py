@@ -23,4 +23,5 @@ def get_twitter_envs():
 def get_bsky_envs():
     BSKY_USERNAME = os.environ["BSKY_USERNAME"]
     BSKY_PASS = os.environ["BSKY_PASSWORD"]
-    return BSKY_USERNAME, BSKY_PASS
+    BSKY_BASEURL = os.environ["BSKY_BASEURL"]
+    return BSKY_USERNAME, BSKY_PASS, BSKY_BASEURL

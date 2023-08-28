@@ -1,5 +1,6 @@
 import requests
 import os
+import tempfile
 from fastapi import APIRouter, Depends
 from typing import Dict, List
 from ..vars import get_notion_envs, get_bsky_envs
@@ -11,7 +12,7 @@ import json
 import re
 
 NOTION_TOKEN, NOTION_DATABASE_ID, NOTION_VERSION = get_notion_envs()
-BSKY_USERNAME, BSKY_PASS = get_bsky_envs()
+BSKY_USERNAME, BSKY_PASS, BSKY_BASEURL = get_bsky_envs()
 
 router = APIRouter(
     prefix="/bsky",
@@ -19,7 +20,9 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 # bsky functions from: https://github.com/bluesky-social/atproto-website/blob/main/examples/create_bsky_post.py
-async def upload_file(access_token, filename, img_bytes, base_url="https://bsky.social") -> Dict:
+def upload_file(access_token, img_bytes) -> Dict:
+    # FIXME: refactor and automate
+    """
     suffix = filename.split(".")[-1].lower()
     mimetype = "application/octet-stream"
     if suffix in ["png"]:
@@ -28,22 +31,21 @@ async def upload_file(access_token, filename, img_bytes, base_url="https://bsky.
         mimetype = "image/jpeg"
     elif suffix in ["webp"]:
         mimetype = "image/webp"
-
-    #TODO: figure out if notion removes EXIF data by default 
-
+    """
+    #TODO: figure  out if notion removes EXIF data by default 
+    # TODO: refactor so that there is only 1 function?
     resp = requests.post(
-        base_url + "/xrpc/com.atproto.repo.uploadBlob",
+        "https://bsky.social/xrpc/com.atproto.repo.uploadBlob",
         headers={
-            "Content-Type": mimetype,
+            "Content-Type": "image/png",
             "Authorization": "Bearer " + access_token,
         },
         data=img_bytes,
     )
     resp.raise_for_status()
-    return await {
-        "$type": "app.bsky.embed.images",
-        "image":resp.json()["blob"]
-    }
+    return {"alt": "test123", "image": resp.json()["blob"]}
+    
+
 
 
 def parse_mentions(text: str) -> List[Dict]:
@@ -77,7 +79,7 @@ def parse_urls(text: str) -> List[Dict]:
         )
     return spans
 
-async def parse_facets(text: str, base_url: str="https://bsky.social") -> List[Dict]:
+def parse_facets(text: str) -> List[Dict]:
     """
     parses post text and returns a list of app.bsky.richtext.facet objects for any mentions (@handle.example.com) or URLs (https://example.com)
 
@@ -88,7 +90,7 @@ async def parse_facets(text: str, base_url: str="https://bsky.social") -> List[D
     
     for m in mentions:
         resp = requests.get(
-            base_url + "/xrpc/com.atproto.identity.resolveHandle",
+            BSKY_BASEURL + "/xrpc/com.atproto.identity.resolveHandle",
             params={"handle": m["handle"]},
         )
         # if handle couldn't be resolved, just skip it! will be text in the post
@@ -106,7 +108,7 @@ async def parse_facets(text: str, base_url: str="https://bsky.social") -> List[D
         )
     urls = parse_urls(text)
     for u in urls:
-        print("check")
+        #print("check")
         facets.append(
             {
                 "index": {
@@ -124,10 +126,10 @@ async def parse_facets(text: str, base_url: str="https://bsky.social") -> List[D
         )
     return facets
 
-async def get_embed_ref(ref_uri: str, base_url: str="https://bsky.social") -> Dict:
+def get_embed_ref(ref_uri: str) -> Dict:
     uri_parts = parse_urls(ref_uri)
     resp = requests.get(
-        base_url + "/xrpc/com.atproto.repo.getRecord",
+        BSKY_BASEURL + "/xrpc/com.atproto.repo.getRecord",
         params=uri_parts,
     )
     print(resp.json())
@@ -142,10 +144,10 @@ async def get_embed_ref(ref_uri: str, base_url: str="https://bsky.social") -> Di
         },
     }
 
-async def get_reply_refs(parent_uri: str, base_url: str="https://bsky.social") -> Dict:
+def get_reply_refs(parent_uri: str) -> Dict:
     uri_parts = parse_urls(parent_uri)
     resp = requests.get(
-        base_url + "/xrpc/com.atproto.repo.getRecord",
+        BSKY_BASEURL + "/xrpc/com.atproto.repo.getRecord",
         params=uri_parts,
     )
     resp.raise_for_status()
@@ -156,7 +158,7 @@ async def get_reply_refs(parent_uri: str, base_url: str="https://bsky.social") -
         root_uri = parent_reply["root"]["uri"]
         root_repo, root_collection, root_rkey = root_uri.split("/")[2:5]
         resp = requests.get(
-            base_url + "/xrpc/com.atproto.repo.getRecord",
+            BSKY_BASEURL + "/xrpc/com.atproto.repo.getRecord",
             params={
                 "repo": root_repo,
                 "collection": root_collection,
@@ -177,8 +179,8 @@ async def get_reply_refs(parent_uri: str, base_url: str="https://bsky.social") -
         },
     }
 
-async def create_post(post_content: Dict, args: Dict):
-    base_url = "https://bsky.social"
+def create_post(post_content: Dict, args: Dict):
+    print(args["media"])
 
     # trailing "Z" is preferred over "+00:00"
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -199,26 +201,26 @@ async def create_post(post_content: Dict, args: Dict):
     # parse out mentions and URLs as "facets"
    
     if len(post_content["post"]) > 0:
-        facets = await parse_facets(post["text"], base_url)
+        facets = parse_facets(post["text"])
         if facets:
             post["facets"] = facets
    
+    if args["media"]:
+        post["embed"] = args["media"]
+        print(post)
 
     # if this is a reply, get references to the parent and root
     try:
         if args["reply_to"]:
-            post["reply"] = get_reply_refs(base_url, args["reply_to"])
+            post["reply"] = get_reply_refs(args["reply_to"])
 
-        if args["image"]:
-            post["embed"] = upload_images(
-                base_url, args["session"]["accessJwt"], args["image"]#, alt_text
-            )
+        
         elif args["embed_url"]:
             post["embed"] = fetch_embed_url_card(
-                base_url, args["session"]["accessJwt"], args["embed_url"]
+                args["session"]["accessJwt"], args["embed_url"]
             )
         elif args["embed_ref"]:
-            post["embed"] = get_embed_ref(base_url, args["embed_ref"])
+            post["embed"] = get_embed_ref(args["embed_ref"])
     except KeyError:
         pass
 
@@ -227,7 +229,7 @@ async def create_post(post_content: Dict, args: Dict):
     #print(json.dumps(post, indent=2), file=sys.stderr)
 
     resp = requests.post(
-        base_url + "/xrpc/com.atproto.repo.createRecord",
+        BSKY_BASEURL + "/xrpc/com.atproto.repo.createRecord",
         headers={"Authorization": "Bearer " + args["session"]["accessJwt"]},
         json={
             "repo": args["session"]["did"],
@@ -235,33 +237,34 @@ async def create_post(post_content: Dict, args: Dict):
             "record": post,
         },
     )
-    print("createRecord response:", file=sys.stderr)
-    print(json.dumps(resp.json(), indent=2))
+    #print("createRecord response:", file=sys.stderr)
+    #print(json.dumps(resp.json(), indent=2))
     resp.raise_for_status()
     return resp.json()
     
 
 @router.get("/publish/{page_id}")
-async def publish_bsky(page_id):
+def publish_bsky(page_id):
    
-    BSKY_SESSION_URL = 'https://bsky.social/xrpc/com.atproto.server.createSession'
+    BSKY_SESSION_URL = f'{BSKY_BASEURL}/xrpc/com.atproto.server.createSession'
     r = requests.post(BSKY_SESSION_URL, json={"identifier": BSKY_USERNAME, "password": BSKY_PASS})
     r.raise_for_status()
     session = r.json()
     args = {"session": session}
     
-    raw_posts = await transform_notion_to_posts(page_id)
+    raw_posts = transform_notion_to_posts(page_id)
     posts = []
     
     # loop through all the tweets and add corresponding images/video to it
     for i, item in enumerate(raw_posts):
         
-        media = []
-        """
+        args["media"] = {'$type': 'app.bsky.embed.images', 'images': []}
+        
         for image in item["media"]:
             if image:
-                with tempfile.NamedTemporaryFile(mode='wb') as temp_file:
-                
+                with tempfile.NamedTemporaryFile(mode='w+b') as temp_file:
+                    
+                    # TODO: maybe add line 268 until 278 into a debug/util function and use the same one in twitter
                     import shutil
                     # we first need to download the image from the s3 bucket that notion places them in
                     response = requests.get(image["fileUrl"], stream=True)
@@ -269,35 +272,41 @@ async def publish_bsky(page_id):
                     # we do it this way because we need to figure out the file mime type and shutil does that for us
                     # + the raw response needs to be stored and this was the easiest solution stackoverflow had 😅
                     shutil.copyfileobj(response.raw, temp_file)
-                    del response
+                    #del response
                     
                     # Get the path of the temporary file
                     temp_file_path = temp_file.name
 
                     # this size limit specified in the app.bsky.embed.images lexicon
-                    if len(temp_file) > 1000000:
+                    if temp_file.tell() > 1000000:
                         raise Exception(
-                            f"image file size too large. 1000000 bytes maximum, got: {len(temp_file)}"
+                            f"image file size too large. 1000000 bytes (~1MB) maximum, got: {temp_file.tell()}"
                         )
                     # upload the medium to bsky
-                    
-                    img = upload_file(access_token=access_token, filename=temp_file_path, img_bytes=temp_file)
-                    media.append(img)
+                    temp_file.seek(0)
+                    img = upload_file(access_token=session["accessJwt"], img_bytes=temp_file.read())
+                    args['media']["images"].append(img)
+                    # TODO figure out how we can initialize the embed section of the post properly
         """
-        if len(raw_posts) <= 1:
-            # there is only a single post
-            if not media:
+        with open("/Users/maikroservice/Downloads/SOCAnalystRoadmap.png", "rb") as img_f:
+            img_bytes = img_f.read()
+
+            img = upload_file(access_token=session["accessJwt"], img_bytes=img_bytes)
+            args['media'] = img
+        print(args['media'])
+        """
+        if i==0:
+            # there is no a single post
+            if not args["media"]["images"]:
                 # if no media we can directly post it
-                response = await create_post(item, args=args)
+                response = create_post(item, args=args)
+                posts.append(response["uri"].split("/")[-1])
+                
+            else:
+                response = create_post(item, args=args)
                 posts.append(response["uri"].split("/")[-1])
                 break
-
-        """    
-            else:
-                response = client.create_tweet(text=item["post"], media_ids=[medium.media_id for medium in media])
-                tweets.append(response.data['id'])
-                break
-        
+        """
         elif(i==0):
             # this is the first tweet of many
             if not media:
@@ -324,20 +333,20 @@ async def publish_bsky(page_id):
     bsky_url = posted_bsky_posts[0]
     
     
-    update_notion_properties = await update_notion_metadata(page_id, "bsky", bsky_url)
+    update_notion_properties = update_notion_metadata(page_id, "bsky", bsky_url)
 
     return (bsky_url, update_notion_properties)
 
 
 @router.get("/{page_id}")
-async def transform_notion_to_posts(page_id, post_length=300):
+def transform_notion_to_posts(page_id, post_length=300):
         url = f'https://api.notion.com/v1/blocks/{page_id}/children'
         headers={
         "Authorization": f"Bearer {NOTION_TOKEN}",
         "Notion-Version": f"{NOTION_VERSION}",
         }
         r = requests.get(url, headers=headers)
-        print(r.status_code)
+        #print(r.status_code)
         
         data = r.json()
         blocks = data["results"]
