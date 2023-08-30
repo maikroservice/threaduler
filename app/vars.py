@@ -7,8 +7,8 @@ def get_notion_envs():
     # setup notion   
     NOTION_TOKEN=os.environ["NOTION_API_TOKEN"]
     NOTION_DATABASE_ID=os.environ["NOTION_DATABASE_ID"]
-    NOTION_VERSION = "2022-06-28"
-    return NOTION_TOKEN, NOTION_DATABASE_ID, NOTION_VERSION
+    NOTION_API_VERSION = os.environ["NOTION_API_VERSION"]
+    return NOTION_TOKEN, NOTION_DATABASE_ID, NOTION_API_VERSION
 
 
 def get_twitter_envs():

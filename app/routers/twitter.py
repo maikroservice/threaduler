@@ -7,7 +7,7 @@ from fastapi import APIRouter
 from ..vars import get_notion_envs, get_twitter_envs
 from ..dependencies import notion_blocks_to_post_chunks, PostTooLongException, TweetNoQuoteAndMediaException
 
-NOTION_TOKEN, NOTION_DATABASE_ID, NOTION_VERSION = get_notion_envs()
+NOTION_TOKEN, NOTION_DATABASE_ID, NOTION_API_VERSION = get_notion_envs()
 CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET = get_twitter_envs()
 
 router = APIRouter(
@@ -20,7 +20,7 @@ async def transform_notion_to_posts(page_id, post_length=280):
         url = f'https://api.notion.com/v1/blocks/{page_id}/children'
         headers={
         "Authorization": f"Bearer {NOTION_TOKEN}",
-        "Notion-Version": f"{NOTION_VERSION}",
+        "Notion-Version": NOTION_API_VERSION,
         }
         r = requests.get(url, headers=headers)
         print(r.status_code)

@@ -11,7 +11,7 @@ import sys
 import json
 import re
 
-NOTION_TOKEN, NOTION_DATABASE_ID, NOTION_VERSION = get_notion_envs()
+NOTION_TOKEN, NOTION_DATABASE_ID, NOTION_API_VERSION = get_notion_envs()
 BSKY_USERNAME, BSKY_PASS, BSKY_BASEURL = get_bsky_envs()
 
 router = APIRouter(
@@ -343,7 +343,7 @@ def transform_notion_to_posts(page_id, post_length=300):
         url = f'https://api.notion.com/v1/blocks/{page_id}/children'
         headers={
         "Authorization": f"Bearer {NOTION_TOKEN}",
-        "Notion-Version": f"{NOTION_VERSION}",
+        "Notion-Version": NOTION_API_VERSION,
         }
         r = requests.get(url, headers=headers)
         #print(r.status_code)

@@ -2,13 +2,14 @@ import requests
 import os 
 from fastapi import APIRouter
 from ..vars import get_notion_envs
+from datetime import datetime
 
 router = APIRouter(
     prefix="/debug",
     tags=["debug"],
 )
 
-NOTION_TOKEN, NOTION_DATABASE_ID, NOTION_VERSION = get_notion_envs()
+NOTION_TOKEN, NOTION_DATABASE_ID, NOTION_API_VERSION = get_notion_envs()
 
 @router.get("/schedule")
 async def schedule():
@@ -17,7 +18,7 @@ async def schedule():
     
     r = requests.post(url, headers={
         "Authorization": f"Bearer {NOTION_TOKEN}",
-        "Notion-Version": "2022-06-28"
+        "Notion-Version": NOTION_API_VERSION
         })
     result_dict = r.json()
     
@@ -34,7 +35,7 @@ async def schedule():
     
     only_non_published = [item for item in only_scheduled_posts if item["status"] == "Ready"]
     # TODO this should just be a comparison of unix timestamps and take care of the time as well? 
-    only_future_posts = [posts for post in only_non_published if datetime.fromisoformat(post["publish_time"]).date() >= datetime.today().date()]
+    only_future_posts = [post for post in only_non_published if datetime.fromisoformat(post["publish_time"]).date() >= datetime.today().date()]
     
     # sort the results by the publish time (ascending)
     return sorted(only_future_posts, key=lambda x: x['publish_time'])
@@ -46,7 +47,7 @@ def transform_notion_to_raw_posts(page_id):
     url = f'https://api.notion.com/v1/blocks/{page_id}/children'
     r = requests.get(url, headers={
     "Authorization": f"Bearer {NOTION_TOKEN}",
-    "Notion-Version": f"{NOTION_VERSION}",
+    "Notion-Version": NOTION_API_VERSION,
     
     })
     return r.json()
@@ -59,7 +60,7 @@ def update_notion_metadata(page_id, platform, post_url):
     url = f'https://api.notion.com/v1/pages/{page_id}'
     r = requests.patch(url, headers={
         "Authorization": f"Bearer {NOTION_TOKEN}",
-        "Notion-Version": f"{NOTION_VERSION}",
+        "Notion-Version": NOTION_API_VERSION,
         },
         json={
             "parent": {"database_id": NOTION_DATABASE_ID},
