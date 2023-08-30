@@ -100,7 +100,7 @@ async def publish_tweets(page_id):
     auth = tweepy.OAuth1UserHandler(CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
     api = tweepy.API(auth)
 
-    raw_tweets = await transform_notion_to_tweets(page_id)
+    raw_tweets = await transform_notion_to_posts(page_id)
     tweets = []
     
     # loop through all the tweets and add corresponding images/video to it
@@ -145,6 +145,6 @@ async def publish_tweets(page_id):
 
     posted_tweets = [f"https://twitter.com/user/status/{tweet_id}" for tweet_id in tweets]
     tweet_url = posted_tweets[0]
-    update_notion_properties = await update_notion_metadata(page_id, "twitter", tweet_url)
+    update_notion_properties = update_notion_metadata(page_id, "twitter", tweet_url)
 
     return (tweet_url, update_notion_properties)

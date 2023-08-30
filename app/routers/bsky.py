@@ -1,15 +1,14 @@
 import requests
 import os
 import tempfile
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from typing import Dict, List
 from ..vars import get_notion_envs, get_bsky_envs
 from ..dependencies import notion_blocks_to_post_chunks, PostTooLongException
 from .debug import update_notion_metadata
 from datetime import datetime, timezone
-import sys 
-import json
 import re
+from bs4 import BeautifulSoup
 
 NOTION_TOKEN, NOTION_DATABASE_ID, NOTION_API_VERSION = get_notion_envs()
 BSKY_USERNAME, BSKY_PASS, BSKY_BASEURL = get_bsky_envs()
@@ -46,6 +45,40 @@ def upload_file(access_token, img_bytes) -> Dict:
     return {"alt": "test123", "image": resp.json()["blob"]}
     
 
+def fetch_embed_url_card(pds_url: str, access_token: str, url: str) -> Dict:
+    # the required fields for an embed card
+    card = {
+        "uri": url,
+        "title": "",
+        "description": "",
+    }
+
+    # fetch the HTML
+    resp = requests.get(url)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+
+    title_tag = soup.find("meta", property="og:title")
+    if title_tag:
+        card["title"] = title_tag["content"]
+
+    description_tag = soup.find("meta", property="og:description")
+    if description_tag:
+        card["description"] = description_tag["content"]
+
+    image_tag = soup.find("meta", property="og:image")
+    if image_tag:
+        img_url = image_tag["content"]
+        if "://" not in img_url:
+            img_url = url + img_url
+        resp = requests.get(img_url)
+        resp.raise_for_status()
+        card["thumb"] = upload_file(pds_url, access_token, img_url, resp.content)
+
+    return {
+        "$type": "app.bsky.embed.external",
+        "external": card,
+    }
 
 
 def parse_mentions(text: str) -> List[Dict]:
@@ -351,14 +384,6 @@ def publish_bsky(page_id):
                     img = upload_file(access_token=session["accessJwt"], img_bytes=temp_file.read())
                     args['media']["images"].append(img)
                     # TODO figure out how we can initialize the embed section of the post properly
-        """
-        with open("/Users/maikroservice/Downloads/SOCAnalystRoadmap.png", "rb") as img_f:
-            img_bytes = img_f.read()
-
-            img = upload_file(access_token=session["accessJwt"], img_bytes=img_bytes)
-            args['media'] = img
-        print(args['media'])
-        """
         if i==0:
             # there is no a single post
             if not args["media"]["images"]:
