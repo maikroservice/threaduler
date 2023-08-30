@@ -179,6 +179,70 @@ def get_reply_refs(parent_uri: str) -> Dict:
         },
     }
 
+
+@router.get("/{page_id}")
+def transform_notion_to_posts(page_id, post_length=300):
+        url = f'https://api.notion.com/v1/blocks/{page_id}/children'
+        headers={
+        "Authorization": f"Bearer {NOTION_TOKEN}",
+        "Notion-Version": NOTION_API_VERSION,
+        }
+        r = requests.get(url, headers=headers)
+        #print(r.status_code)
+        
+        data = r.json()
+        blocks = data["results"]
+
+        
+        while data.get('has_more', False):
+            # we are limited to 100 blocks per notion api request, if has_more is present, 
+            # there is more data and we need to request again with the
+            # correct cursor present
+            next_cursor = data['next_cursor']
+
+            response = requests.get(f"{url}?start_cursor={next_cursor}", headers=headers)
+            data = response.json()
+            blocks += data["results"]
+        
+        # we separate the blocks by divider and group them together in raw pretweet format
+        chunks = notion_blocks_to_post_chunks(blocks)
+
+        posts = []
+        for i in range(0,len(chunks)):
+            post = {}
+            post["post"] = r""
+            post["media"] = []
+            post["quote"] = ""
+            # TODO: parse bullet list blocks / numbered list blocks correctly
+            
+            # find paragraph blocks and publish
+            paragraph_blocks = [block["paragraph"]["rich_text"] for block in chunks[i] if block["type"] == "paragraph"]
+            for block in paragraph_blocks:
+                if block:
+                    # if our block starts with {{ we should is a quote_tweet 
+                    if block[0]['plain_text'].strip().startswith("{{"):
+                        post["quote"] = block[1]['plain_text'].split("/")[-1]
+                    else:
+                        post["post"] += f"{block[0]['plain_text'].rstrip()}\n"
+                else:
+                    post["post"] += "\n\n"
+            
+            media_blocks = [block["image"] for block in chunks[i] if block["type"] == "image"]
+            for i, block in enumerate(media_blocks):
+                if block:
+                    post["media"].append({"fileUrl": block["file"]["url"]})
+            
+            try:
+                post["char_count"] = len(post["post"])
+                if post["char_count"] > post_length:
+                    raise PostTooLongException() 
+            except PostTooLongException:
+                print(f'TOO LONG: {post["post"]}')
+
+            posts.append(post)
+
+        return posts
+
 def create_post(post_content: Dict, args: Dict):
     #print(args["media"])
 
@@ -336,74 +400,3 @@ def publish_bsky(page_id):
     update_notion_properties = update_notion_metadata(page_id, "bsky", bsky_url)
 
     return (bsky_url, update_notion_properties)
-
-
-@router.get("/{page_id}")
-def transform_notion_to_posts(page_id, post_length=300):
-        url = f'https://api.notion.com/v1/blocks/{page_id}/children'
-        headers={
-        "Authorization": f"Bearer {NOTION_TOKEN}",
-        "Notion-Version": NOTION_API_VERSION,
-        }
-        r = requests.get(url, headers=headers)
-        #print(r.status_code)
-        
-        data = r.json()
-        blocks = data["results"]
-
-        
-        while data.get('has_more', False):
-            # we are limited to 100 blocks per notion api request, if has_more is present, 
-            # there is more data and we need to request again with the
-            # correct cursor present
-            next_cursor = data['next_cursor']
-
-            response = requests.get(f"{url}?start_cursor={next_cursor}", headers=headers)
-            data = response.json()
-            blocks += data["results"]
-        
-        # we separate the blocks by divider and group them together in raw pretweet format
-        chunks = notion_blocks_to_post_chunks(blocks)
-
-        posts = []
-        for i in range(0,len(chunks)):
-            post = {}
-            post["post"] = r""
-            post["media"] = []
-            post["quote"] = ""
-            # TODO: parse bullet list blocks / numbered list blocks correctly
-            
-            # find paragraph blocks and publish
-            paragraph_blocks = [block["paragraph"]["rich_text"] for block in chunks[i] if block["type"] == "paragraph"]
-            for block in paragraph_blocks:
-                if block:
-                    # if our block starts with {{ we should is a quote_tweet 
-                    if block[0]['plain_text'].strip().startswith("{{"):
-                        post["quote"] = block[1]['plain_text'].split("/")[-1]
-                    else:
-                        post["post"] += f"{block[0]['plain_text'].rstrip()}\n"
-                else:
-                    post["post"] += "\n\n"
-            
-            media_blocks = [block["image"] for block in chunks[i] if block["type"] == "image"]
-            for i, block in enumerate(media_blocks):
-                if block:
-                    post["media"].append({"fileUrl": block["file"]["url"]})
-            
-            try:
-                post["char_count"] = len(post["post"])
-                if post["char_count"] > post_length:
-                    raise PostTooLongException() 
-            except PostTooLongException:
-                print(f'TOO LONG: {post["post"]}')
-            
-            try:
-                if post["media"] and post["quote"]:
-                # since media and quote tweets are mutually exclusive we need to stop here
-                    raise TweetNoQuoteAndMediaException()
-            except TweetNoQuoteAndMediaException:
-                print(f"Quote Tweets cannot contain media - {post['post']}")
-
-            posts.append(post)
-
-        return posts

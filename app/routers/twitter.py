@@ -6,7 +6,7 @@ import tempfile
 from fastapi import APIRouter 
 from ..vars import get_notion_envs, get_twitter_envs
 from ..dependencies import notion_blocks_to_post_chunks, PostTooLongException, TweetNoQuoteAndMediaException
-
+from .debug import update_notion_metadata
 NOTION_TOKEN, NOTION_DATABASE_ID, NOTION_API_VERSION = get_notion_envs()
 CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET = get_twitter_envs()
 
@@ -145,6 +145,6 @@ async def publish_tweets(page_id):
 
     posted_tweets = [f"https://twitter.com/user/status/{tweet_id}" for tweet_id in tweets]
     tweet_url = posted_tweets[0]
-    update_notion_properties = await update_notion_db(page_id, tweet_url)
+    update_notion_properties = await update_notion_metadata(page_id, "twitter", tweet_url)
 
     return (tweet_url, update_notion_properties)
