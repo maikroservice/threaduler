@@ -1,5 +1,7 @@
 import requests
 import os
+import sys
+import json
 import tempfile
 from fastapi import APIRouter
 from typing import Dict, List
@@ -44,6 +46,22 @@ def upload_file(access_token, img_bytes) -> Dict:
     resp.raise_for_status()
     return {"alt": "test123", "image": resp.json()["blob"]}
     
+
+def parse_uri(uri: str) -> Dict:
+    if uri.startswith("at://"):
+        repo, collection, rkey = uri.split("/")[2:5]
+        return {"repo": repo, "collection": collection, "rkey": rkey}
+    elif uri.startswith("https://bsky.app/"):
+        repo, collection, rkey = uri.split("/")[4:7]
+        if collection == "post":
+            collection = "app.bsky.feed.post"
+        elif collection == "lists":
+            collection = "app.bsky.graph.list"
+        elif collection == "feed":
+            collection = "app.bsky.feed.generator"
+        return {"repo": repo, "collection": collection, "rkey": rkey}
+    else:
+        raise Exception("unhandled URI format: " + uri)
 
 def fetch_embed_url_card(pds_url: str, access_token: str, url: str) -> Dict:
     # the required fields for an embed card
@@ -141,7 +159,6 @@ def parse_facets(text: str) -> List[Dict]:
         )
     urls = parse_urls(text)
     for u in urls:
-        #print("check")
         facets.append(
             {
                 "index": {
@@ -160,7 +177,7 @@ def parse_facets(text: str) -> List[Dict]:
     return facets
 
 def get_embed_ref(ref_uri: str) -> Dict:
-    uri_parts = parse_urls(ref_uri)
+    uri_parts = parse_uri(ref_uri)
     resp = requests.get(
         BSKY_BASEURL + "/xrpc/com.atproto.repo.getRecord",
         params=uri_parts,
@@ -178,7 +195,7 @@ def get_embed_ref(ref_uri: str) -> Dict:
     }
 
 def get_reply_refs(parent_uri: str) -> Dict:
-    uri_parts = parse_urls(parent_uri)
+    uri_parts = parse_uri(parent_uri)
     resp = requests.get(
         BSKY_BASEURL + "/xrpc/com.atproto.repo.getRecord",
         params=uri_parts,
@@ -221,7 +238,7 @@ def transform_notion_to_posts(page_id, post_length=300):
         "Notion-Version": NOTION_API_VERSION,
         }
         r = requests.get(url, headers=headers)
-        #print(r.status_code)
+        
         
         data = r.json()
         blocks = data["results"]
@@ -302,15 +319,12 @@ def create_post(post_content: Dict, args: Dict):
         if facets:
             post["facets"] = facets
    
-    if args["media"]:
-        post["embed"] = args["media"]
-        #print(post)
+    
 
     # if this is a reply, get references to the parent and root
     try:
-        if args["reply_to"]:
-            post["reply"] = get_reply_refs(args["reply_to"])
-
+        if args["posts"]:
+            post["reply"] = get_reply_refs(args["posts"][-1])
         
         elif args["embed_url"]:
             post["embed"] = fetch_embed_url_card(
@@ -318,6 +332,13 @@ def create_post(post_content: Dict, args: Dict):
             )
         elif args["embed_ref"]:
             post["embed"] = get_embed_ref(args["embed_ref"])
+    except KeyError:
+        pass
+
+    # if post has images/media attached we hand it over to the post
+    try:
+        if args["media"]:
+            post["embed"] = args["media"]
     except KeyError:
         pass
 
@@ -334,6 +355,7 @@ def create_post(post_content: Dict, args: Dict):
             "record": post,
         },
     )
+    
     #print("createRecord response:", file=sys.stderr)
     #print(json.dumps(resp.json(), indent=2))
     resp.raise_for_status()
@@ -351,73 +373,46 @@ def publish_bsky(page_id):
     
     raw_posts = transform_notion_to_posts(page_id)
     posts = []
-    
-    # loop through all the tweets and add corresponding images/video to it
-    for i, item in enumerate(raw_posts):
+    # loop through all the posts and add corresponding images/video to it
+    for item in raw_posts:
         
-        args["media"] = {'$type': 'app.bsky.embed.images', 'images': []}
-        
-        for image in item["media"]:
-            if image:
-                with tempfile.NamedTemporaryFile(mode='w+b') as temp_file:
-                    
-                    # TODO: maybe add line 268 until 278 into a debug/util function and use the same one in twitter
-                    import shutil
-                    # we first need to download the image from the s3 bucket that notion places them in
-                    response = requests.get(image["fileUrl"], stream=True)
-                    # Write data to the temporary file
-                    # we do it this way because we need to figure out the file mime type and shutil does that for us
-                    # + the raw response needs to be stored and this was the easiest solution stackoverflow had 😅
-                    shutil.copyfileobj(response.raw, temp_file)
-                    #del response
-                    
-                    # Get the path of the temporary file
-                    temp_file_path = temp_file.name
+        args["posts"] = posts
 
-                    # this size limit specified in the app.bsky.embed.images lexicon
-                    if temp_file.tell() > 1000000:
-                        raise Exception(
-                            f"image file size too large. 1000000 bytes (~1MB) maximum, got: {temp_file.tell()}"
-                        )
-                    # upload the medium to bsky
-                    temp_file.seek(0)
-                    img = upload_file(access_token=session["accessJwt"], img_bytes=temp_file.read())
-                    args['media']["images"].append(img)
-                    # TODO figure out how we can initialize the embed section of the post properly
-        if i==0:
-            # there is no a single post
-            if not args["media"]["images"]:
-                # if no media we can directly post it
-                response = create_post(item, args=args)
-                posts.append(response["uri"].split("/")[-1])
+        if item["media"]:
+            args["media"] = {'$type': 'app.bsky.embed.images', 'images': []}
+            for image in item["media"]:
+                if image:
+                    with tempfile.NamedTemporaryFile(mode='w+b') as temp_file:
+                        
+                        # TODO: maybe add line 268 until 278 into a debug/util function and use the same one in twitter
+                        import shutil
+                        # we first need to download the image from the s3 bucket that notion places them in
+                        response = requests.get(image["fileUrl"], stream=True)
+                        # Write data to the temporary file
+                        # we do it this way because we need to figure out the file mime type and shutil does that for us
+                        # + the raw response needs to be stored and this was the easiest solution stackoverflow had 😅
+                        shutil.copyfileobj(response.raw, temp_file)
+                        #del response
+                        
+                        # Get the path of the temporary file
+                        temp_file_path = temp_file.name
+
+                        # this size limit specified in the app.bsky.embed.images lexicon
+                        if temp_file.tell() > 1000000:
+                            raise Exception(
+                                f"image file size too large. 1000000 bytes (~1MB) maximum, got: {temp_file.tell()}"
+                            )
+                        # upload the medium to bsky
+                        temp_file.seek(0)
+                        img = upload_file(access_token=session["accessJwt"], img_bytes=temp_file.read())
+                        args['media']["images"].append(img)
+                        # TODO figure out how we can initialize the embed section of the post properly
+            
+        # publishing the posts
+        response = create_post(item, args=args)
+        posts.append(response["uri"])
                 
-            else:
-                response = create_post(item, args=args)
-                posts.append(response["uri"].split("/")[-1])
-                break
-        """
-        elif(i==0):
-            # this is the first tweet of many
-            if not media:
-                response = client.create_tweet(text=item["post"], quote_tweet_id=item["quote"])
-                tweets.append(response.data['id'])
-                continue
-            else:
-                response = client.create_tweet(text=item["post"], media_ids=[medium.media_id for medium in media])
-                tweets.append(response.data['id'])
-                continue
-        
-        else:
-            # this is a thread and we need to reply to the previous tweet
-            if not media:
-                response = client.create_tweet(text=item["post"], in_reply_to_tweet_id=tweets[-1], quote_tweet_id=item["quote"])
-                tweets.append(response.data['id'])
-                continue
-            else:
-                response = client.create_tweet(text=item["post"], in_reply_to_tweet_id=tweets[-1], media_ids=[medium.media_id for medium in media])
-                tweets.append(response.data['id'])
-                continue
-    """
+    
     posted_bsky_posts = [f"https://bsky.app/profile/{BSKY_USERNAME}/post/{post_id}" for post_id in posts]
     bsky_url = posted_bsky_posts[0]
     
