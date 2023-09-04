@@ -1,16 +1,14 @@
 from datetime import datetime
-from fastapi import FastAPI, Depends, responses
+from fastapi import FastAPI, responses
 import requests
-import os
-import json
-import sys
-from .routers import twitter, bsky, debug
+from .routers import twitter, bsky, debug, linkedin
 from .vars import get_notion_envs
 
 app = FastAPI()
 app.include_router(twitter.router)
 app.include_router(bsky.router)
 app.include_router(debug.router)
+app.include_router(linkedin.router)
 
 @app.get("/")
 async def root(status="Idea"):

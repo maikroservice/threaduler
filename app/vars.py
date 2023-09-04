@@ -25,3 +25,10 @@ def get_bsky_envs():
     BSKY_PASS = os.environ["BSKY_PASSWORD"]
     BSKY_BASEURL = os.environ["BSKY_BASEURL"]
     return BSKY_USERNAME, BSKY_PASS, BSKY_BASEURL
+
+# setup linkedin
+def get_linkedin_envs():
+    LINKEDIN_CLIENT_ID = os.environ["LINKEDIN_CLIENT_ID"]
+    LINKEDIN_CLIENT_SECRET = os.environ["LINKEDIN_CLIENT_SECRET"]
+    LINKEDIN_ACCESS_TOKEN  = os.environ["LINKEDIN_ACCESS_TOKEN"]
+    return LINKEDIN_CLIENT_ID, LINKEDIN_ACCESS_TOKEN, LINKEDIN_CLIENT_SECRET
