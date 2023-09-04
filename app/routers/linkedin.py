@@ -6,6 +6,7 @@ import requests
 from enum import Enum
 from fastapi import APIRouter
 import random
+import json
 
 router = APIRouter(
     prefix="/linkedin",
@@ -29,7 +30,7 @@ def get_user_token():
     }
     headers = {"X-Restli-Protocol-Version": "2.0.0"}#, "Content-Type": "application/json"}
     r = requests.get(URL, params=params, headers=headers)
-    return r.url
+    return (r.url)
 
 @router.get("/token2")
 def authenticate_linkedin(code: str, state: str):
