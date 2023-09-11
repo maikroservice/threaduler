@@ -7,13 +7,30 @@ from fastapi import APIRouter
 from ..vars import get_notion_envs, get_twitter_envs
 from ..dependencies import notion_blocks_to_post_chunks, PostTooLongException, TweetNoQuoteAndMediaException
 from .debug import update_notion_metadata
+
+
 NOTION_TOKEN, NOTION_DATABASE_ID, NOTION_API_VERSION = get_notion_envs()
 CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET = get_twitter_envs()
+
 
 router = APIRouter(
     prefix="/twitter",
     tags=["twitter"],
 )
+
+def authenticate_twitter():
+    # the client posts our tweets
+    client = tweepy.Client(
+    consumer_key=CONSUMER_KEY, consumer_secret=CONSUMER_SECRET,
+    access_token=ACCESS_TOKEN, access_token_secret=ACCESS_TOKEN_SECRET
+    )
+
+    # we need the api connection to upload images
+    auth = tweepy.OAuth1UserHandler(CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
+    api = tweepy.API(auth)
+
+    return client, api
+
 
 @router.get("/{page_id}")
 async def transform_notion_to_posts(page_id, post_length=280):
@@ -54,18 +71,27 @@ async def transform_notion_to_posts(page_id, post_length=280):
             paragraph_blocks = [block["paragraph"]["rich_text"] for block in chunks[i] if block["type"] == "paragraph"]
             for block in paragraph_blocks:
                 if block:
-                    # if our block starts with {{ we should is a quote_tweet 
-                    if block[0]['plain_text'].strip().startswith("{{"):
-                        post["quote"] = block[1]['plain_text'].split("/")[-1]
-                    else:
+                     # if our block starts with {{ it is a quote_tweet
+                    #if block[0]['plain_text'].strip().startswith("{{"):
+                        # if it contains the word "FIRST_POST" then it should quote the first tweet
+                        #if block[0]['plain_text'].strip().startswith("{{FIRST_"):
+                        #    post["quote"] = posts[0].split("/")[-1][:-2]
+                        #else:
+                            # otherwise we take the id from the url provided between the {{}}
+                        #    post["quote"] = block[0]['plain_text'].split("/")[-1][:-2]
+                            
+                    #else:
                         post["tweet"] += f"{block[0]['plain_text'].rstrip()}\n"
                 else:
                     post["tweet"] += "\n\n"
             
             media_blocks = [block["image"] for block in chunks[i] if block["type"] == "image"]
-            for i, block in enumerate(media_blocks):
+            for block in media_blocks:
                 if block:
-                    post["media"].append({"fileUrl": block["file"]["url"]})
+                    try:
+                        post["media"].append({"fileUrl": block["file"]["url"]})
+                    except KeyError:
+                        post["media"].append({"fileUrl": block["external"]["url"]})
             
             try:
                 post["char_count"] = len(post["tweet"])
@@ -88,17 +114,8 @@ async def transform_notion_to_posts(page_id, post_length=280):
 @router.get("/publish/{page_id}")
 async def publish_tweets(page_id):
     # import tempfile so that we can create temporary files
-    import tempfile
-
-    # the client posts our tweets
-    client = tweepy.Client(
-    consumer_key=CONSUMER_KEY, consumer_secret=CONSUMER_SECRET,
-    access_token=ACCESS_TOKEN, access_token_secret=ACCESS_TOKEN_SECRET
-    )
-
-    # we need the api connection to upload images
-    auth = tweepy.OAuth1UserHandler(CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
-    api = tweepy.API(auth)
+    client, api = authenticate_twitter()
+    
 
     raw_tweets = await transform_notion_to_posts(page_id)
     tweets = []
@@ -125,8 +142,10 @@ async def publish_tweets(page_id):
 
         if(i==0):
             # this is the first tweet
-            if not media:
+            if item["quote"] and not media:
                 response = client.create_tweet(text=item["tweet"], quote_tweet_id=item["quote"])
+            elif not item["quote"] and not media:
+                response = client.create_tweet(text=item["tweet"])
                 
             else:
                 response = client.create_tweet(text=item["tweet"], media_ids=[medium.media_id for medium in media])
@@ -134,9 +153,10 @@ async def publish_tweets(page_id):
         
         else:
             # this is a thread and we need to reply to the previous tweet
-            if not media:
+            if item["quote"] and not media:
                 response = client.create_tweet(text=item["tweet"], in_reply_to_tweet_id=tweets[-1], quote_tweet_id=item["quote"])
-                
+            elif not item["quote"] and not media:
+                response = client.create_tweet(text=item["tweet"], in_reply_to_tweet_id=tweets[-1])
             else:
                 response = client.create_tweet(text=item["tweet"], in_reply_to_tweet_id=tweets[-1], media_ids=[medium.media_id for medium in media])
         
