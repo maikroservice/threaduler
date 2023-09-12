@@ -400,14 +400,15 @@ def publish_bsky(page_id):
                         # this size limit specified in the app.bsky.embed.images lexicon
                         if temp_file.tell() > 1000000:
                             raise Exception(
-                                f"image file size too large. 1000000 bytes (~1MB) maximum, got: {temp_file.tell()}"
+                                f"{image['fileUrl']} - image file size too large. 1000000 bytes (~1MB) maximum, got: {temp_file.tell()}"
                             )
                         # upload the medium to bsky
                         temp_file.seek(0)
                         img = upload_file(access_token=session["accessJwt"], img_bytes=temp_file.read())
                         args['media']["images"].append(img)
                         # TODO figure out how we can initialize the embed section of the post properly
-            
+        else:
+            del args["media"]
         # publishing the posts
         response = create_post(item, args=args)
         posts.append(response["uri"])
