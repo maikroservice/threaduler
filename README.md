@@ -37,7 +37,7 @@
   <h3 align="center">Threaduler 0.1 alpha - Your open-source Social Media scheduler</h3>
 
   <p align="center">
-    Currently Threaduler works for <a href="https://x.com">twitter/X</a> and soon^TM <a href="https://bsky.app">bluesky</a>
+    Currently Threaduler works for <a href="https://x.com">twitter/X</a>, <a href="https://bsky.app">bluesky</a> and soon^TM <a href="https://linkedin.com">linkedin</a>
     <br /><br />
     <a href="https://github.com/maikroservice/threaduler"><strong>Explore the repository »</strong></a>
     <br />
