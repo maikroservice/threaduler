@@ -11,6 +11,9 @@ from .debug import update_notion_metadata
 from datetime import datetime, timezone
 import re
 from bs4 import BeautifulSoup
+import shutil
+from urllib3.exceptions import InvalidChunkLength
+
 
 NOTION_TOKEN, NOTION_DATABASE_ID, NOTION_API_VERSION = get_notion_envs()
 BSKY_USERNAME, BSKY_PASS, BSKY_BASEURL = get_bsky_envs()
@@ -382,6 +385,36 @@ def publish_bsky(page_id):
             args["media"] = {'$type': 'app.bsky.embed.images', 'images': []}
             for image in item["media"]:
                 if image:
+                    """
+                    try:
+                        with tempfile.NamedTemporaryFile(mode='w+b') as temp_file:
+                            response = requests.get(image["fileUrl"], stream=True)
+                            try:
+                                shutil.copyfileobj(response.raw, temp_file)
+                                temp_file_path = temp_file.name
+                                
+                                if temp_file.tell() > 1000000:
+                                    from PIL import Image
+                                    f_size = temp_file.tell()
+                                    print(f_size)
+                                    image = Image.open(temp_file)
+                                    image.thumbnail([sys.maxsize, 800], Image.LANCZOS)
+                                    img = upload_file(access_token=session["accessJwt"], img_bytes=image.tobytes())
+                                    args['media']["images"].append(img)
+                                    break
+
+                                temp_file.seek(0)
+                                img = upload_file(access_token=session["accessJwt"], img_bytes=temp_file.read())
+                                args['media']["images"].append(img)
+
+                                except InvalidChunkLength as e:
+                                    print(f"Error copying file: {e}")
+                                else:
+                                    print(f"Request failed with status code: {response.status_code}")
+                                
+                    except Exception as e:
+                        print(f"An error occurred: {e}")
+                    """
                     with tempfile.NamedTemporaryFile(mode='w+b') as temp_file:
                         
                         # TODO: maybe add line 268 until 278 into a debug/util function and use the same one in twitter
@@ -400,20 +433,24 @@ def publish_bsky(page_id):
                         # this size limit specified in the app.bsky.embed.images lexicon
                         if temp_file.tell() > 1000000:
                             f_size = temp_file.tell()
+                            print(f_size)
                             import sys
                             from PIL import Image
                             image = Image.open(temp_file)
-                            image.thumbnail([sys.maxsize, 1000], Image.LANCZOS)
-
+                            image.thumbnail([sys.maxsize, 800], Image.LANCZOS)
+                            img = upload_file(access_token=session["accessJwt"], img_bytes=image.tobytes())
+                            args['media']["images"].append(img)
+                            break
                             #raise Exception(
                             #    f"{image['fileUrl']} - image file size was too large. 1000000 bytes (~1MB) maximum, got: {f_size} resized to {temp_file.tell()}"
                             #)
-                            print(f"resized image - {image['fileUrl']}")
+                            # print(f"resized image - {image['fileUrl']}")
                         # upload the medium to bsky
                         temp_file.seek(0)
                         img = upload_file(access_token=session["accessJwt"], img_bytes=temp_file.read())
                         args['media']["images"].append(img)
                         # TODO figure out how we can initialize the embed section of the post properly
+                        
         else:
             try:
                 del args["media"]
@@ -424,7 +461,7 @@ def publish_bsky(page_id):
         posts.append(response["uri"])
                 
     
-    posted_bsky_posts = [f"https://bsky.app/profile/{BSKY_USERNAME}/post/{post_id}" for post_id in posts]
+    posted_bsky_posts = [f"https://bsky.app/profile/{BSKY_USERNAME}/post/{post_id.split('/')[-1]}" for post_id in posts]
     bsky_url = posted_bsky_posts[0]
     
     
