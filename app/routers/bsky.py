@@ -13,10 +13,13 @@ import re
 from bs4 import BeautifulSoup
 import shutil
 from urllib3.exceptions import InvalidChunkLength
+import numpy as np
+import cv2
 
 
 NOTION_TOKEN, NOTION_DATABASE_ID, NOTION_API_VERSION = get_notion_envs()
 BSKY_USERNAME, BSKY_PASS, BSKY_BASEURL = get_bsky_envs()
+MAX_FILE_SIZE = 100000
 
 router = APIRouter(
     prefix="/bsky",
@@ -233,6 +236,29 @@ def get_reply_refs(parent_uri: str) -> Dict:
     }
 
 
+def reduce_image_memory(path, max_file_size: int = MAX_FILE_SIZE):
+    #https://stackoverflow.com/questions/66455731/how-to-calculate-the-resulting-filesize-of-image-resize-in-pil
+    """
+        Reduce the image memory by downscaling the image.
+
+        :param path: (str) Path to the image
+        :param max_file_size: (int) Maximum size of the file in bytes
+        :return: (np.ndarray) downscaled version of the image
+    """
+    image = cv2.imread(path)
+    height, width = image.shape[:2]
+
+    original_memory = os.stat(path).st_size
+    original_bytes_per_pixel = original_memory / np.product(image.shape[:2])
+
+    # perform resizing calculation
+    new_bytes_per_pixel = original_bytes_per_pixel * (max_file_size / original_memory)
+    new_bytes_ratio = np.sqrt(new_bytes_per_pixel / original_bytes_per_pixel)
+    new_width, new_height = int(new_bytes_ratio * width), int(new_bytes_ratio * height)
+
+    new_image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_LINEAR_EXACT)
+    return new_image
+
 @router.get("/{page_id}")
 def transform_notion_to_posts(page_id, post_length=300):
         url = f'https://api.notion.com/v1/blocks/{page_id}/children'
@@ -431,13 +457,10 @@ def publish_bsky(page_id):
                         temp_file_path = temp_file.name
 
                         # this size limit specified in the app.bsky.embed.images lexicon
-                        if temp_file.tell() > 1000000:
+                        if temp_file.tell() > MAX_FILE_SIZE:
                             f_size = temp_file.tell()
                             print(f_size)
-                            import sys
-                            from PIL import Image
-                            image = Image.open(temp_file)
-                            image.thumbnail([sys.maxsize, 800], Image.LANCZOS)
+                            image = reduce_image_memory(temp_file_path, max_file_size=MAX_FILE_SIZE)
                             img = upload_file(access_token=session["accessJwt"], img_bytes=image.tobytes())
                             args['media']["images"].append(img)
                             break
