@@ -130,12 +130,14 @@ async def publish_tweets(page_id):
                 
                     import shutil
                     response = requests.get(image["fileUrl"], stream=True)
+                    # response.seek(0)
                     # Write data to the temporary file    
                     shutil.copyfileobj(response.raw, temp_file)
                     del response
                     
                     # Get the path of the temporary file
                     temp_file_path = temp_file.name
+                    temp_file.seek(0)
                     media_file = api.simple_upload(filename=temp_file_path)
                     media.append(media_file)
 
