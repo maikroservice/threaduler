@@ -21,5 +21,9 @@ async def root(status="Idea"):
         "Notion-Version": NOTION_API_VERSION
         })
     result_dict = r.json()
-    return responses.JSONResponse([{item["properties"]["Title"]["title"][0]["plain_text"]: item["id"]} for item in result_dict["results"] if item["properties"]["Status"]["status"]["name"] == status])
+    try:
+        res = responses.JSONResponse([{item["properties"]["Title"]["title"][0]["plain_text"]: item["id"]} for item in result_dict["results"] if item["properties"]["Status"]["status"]["name"] == status])
+    except IndexError as e:
+        res = f"database page without name detected"
+    return res
     
