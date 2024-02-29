@@ -27,7 +27,7 @@ def authenticate_twitter():
 
     # we need the api connection to upload images
     auth = tweepy.OAuth1UserHandler(CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
-    api = tweepy.API(auth, wait_on_rate_limit=True, wait_on_rate_limit_notify=True)
+    api = tweepy.API(auth, wait_on_rate_limit=True)
 
     return client, api
 
@@ -68,6 +68,7 @@ async def transform_notion_to_posts(page_id, post_length=280):
             # TODO: parse bullet list blocks / numbered list blocks correctly
             
             # find paragraph blocks and publish
+            # print(chunks)
             paragraph_blocks = [block["paragraph"]["rich_text"] for block in chunks[i] if block["type"] == "paragraph"]
             for block in paragraph_blocks:
                 if block:
